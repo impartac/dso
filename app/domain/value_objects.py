@@ -60,8 +60,8 @@ class Email:
 
 
 class UserRole(Enum):
-    ADMIN = "admin"
-    USER = "user"
+    ADMIN = "ADMIN"
+    USER = "USER"
 
 
 class MediaType(Enum):

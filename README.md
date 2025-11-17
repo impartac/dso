@@ -1,6 +1,6 @@
 # SecDev Course Template
 
-Стартовый шаблон для студенческого репозитория (HSE SecDev 2025).
+Media Catalog
 
 ## Быстрый старт
 ```bash

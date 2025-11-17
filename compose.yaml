@@ -1,8 +1,46 @@
+version: '3.8'
+
 services:
   app:
     build: .
     ports:
       - "8000:8000"
     environment:
-      - PYTHONUNBUFFERED=1
-    profiles: ["dev"]
+      - DATABASE_URL=postgresql+asyncpg://media_user:media_password@db:5432/mediacatalog
+      - SECRET_KEY=your-very-secure-secret-key-change-in-production
+      - DEBUG=false
+      - ENVIRONMENT=dev
+    depends_on:
+      - db
+    volumes:
+      - ./logs:/app/logs
+    # restart: unless-stopped
+    networks:
+      - media-network
+
+  db:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=mediacatalog
+      - POSTGRES_USER=media_user
+      - POSTGRES_PASSWORD=media_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5555:5432"
+    networks:
+      - media-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U media_user -d mediacatalog"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+
+networks:
+  media-network:
+    driver: bridge

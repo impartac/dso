@@ -1,7 +1,6 @@
 import uuid
 from typing import Optional
 
-from ..domain.entities import User
 from ..domain.value_objects import UserRole
 from .unit_of_wrok_interface import UnitOfWorkInterface
 
@@ -11,25 +10,25 @@ class AuthorizationService:
         self._uow = uow
 
     async def authorize_user(
-        self, 
-        user_id: uuid.UUID, 
+        self,
+        user_id: uuid.UUID,
         required_roles: list[UserRole],
-        resource_owner_id: Optional[uuid.UUID] = None
+        resource_owner_id: Optional[uuid.UUID] = None,
     ) -> bool:
         """
         Авторизация пользователя
-        
+
         Args:
             user_id: ID пользователя, который пытается выполнить действие
             required_roles: Список ролей, которые имеют доступ
             resource_owner_id: ID владельца ресурса (для проверки владения)
-        
+
         Returns:
             bool: True если авторизация успешна
         """
         user_repo = await self._uow.get_user_repository()
         user = await user_repo.get(user_id)
-        
+
         if not user:
             return False
 
@@ -46,13 +45,11 @@ class AuthorizationService:
         return True
 
     async def can_manage_media(
-        self, 
-        user_id: uuid.UUID, 
-        media_owner_id: Optional[uuid.UUID] = None
+        self, user_id: uuid.UUID, media_owner_id: Optional[uuid.UUID] = None
     ) -> bool:
         """
         Проверка прав на управление медиа
-        
+
         Args:
             user_id: ID пользователя
             media_owner_id: ID владельца медиа (опционально)

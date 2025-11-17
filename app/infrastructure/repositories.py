@@ -1,6 +1,5 @@
 import datetime
 import uuid
-from abc import ABC, abstractmethod
 from typing import List, Optional
 
 from sqlalchemy import and_, delete, func, select
@@ -57,19 +56,19 @@ class UserRepository(Repository, UserRepositoryInterface):
         stmt = select(UserORM).where(UserORM.id == entity.id)
         result = await self._session.execute(stmt)
         orm = result.scalar_one()
-        
+
         orm.email = str(entity.email)
         orm.role = entity.role
         orm.hash_password = entity.hash_password
         orm.updated_at = datetime.datetime.now()
-        
+
         await self._session.flush()
 
     async def delete(self, id: uuid.UUID) -> bool:
         stmt = select(UserORM).where(UserORM.id == id)
         result = await self._session.execute(stmt)
         orm = result.scalar_one_or_none()
-        
+
         if orm:
             await self._session.delete(orm)
             await self._session.flush()
@@ -95,17 +94,17 @@ class MediaRepository(Repository, MediaRepositoryInterface):
         stmt = select(MediaORM).where(MediaORM.id == entity.id)
         result = await self._session.execute(stmt)
         orm = result.scalar_one_or_none()
-        
+
         if not orm:
             return None
-            
+
         orm.kind = entity.kind
         orm.name = entity.name
         orm.title = entity.title
         orm.status = entity.status
         orm.owner_id = entity.owner_id
         orm.updated_at = datetime.datetime.now()
-        
+
         await self._session.flush()
         return media_to_entity(orm)
 
@@ -113,7 +112,7 @@ class MediaRepository(Repository, MediaRepositoryInterface):
         stmt = select(MediaORM).where(MediaORM.id == id)
         result = await self._session.execute(stmt)
         orm = result.scalar_one_or_none()
-        
+
         if orm:
             await self._session.delete(orm)
             await self._session.flush()
@@ -121,32 +120,29 @@ class MediaRepository(Repository, MediaRepositoryInterface):
         return None
 
     async def get_by_owner(
-        self, 
-        owner_id: uuid.UUID, 
+        self,
+        owner_id: uuid.UUID,
         status: Optional[MediaStatus] = None,
-        skip: int = 0, 
-        limit: int = 100
+        skip: int = 0,
+        limit: int = 100,
     ) -> List[Media]:
         stmt = select(MediaORM).where(MediaORM.owner_id == owner_id)
-        
+
         if status:
             stmt = stmt.where(MediaORM.status == status)
-            
+
         stmt = stmt.offset(skip).limit(limit)
-        
+
         result = await self._session.execute(stmt)
         orm_list = result.scalars().all()
         return [media_to_entity(orm) for orm in orm_list]
 
     async def get_by_status(
-        self, 
-        status: MediaStatus,
-        skip: int = 0, 
-        limit: int = 100
+        self, status: MediaStatus, skip: int = 0, limit: int = 100
     ) -> List[Media]:
         stmt = select(MediaORM).where(MediaORM.status == status)
         stmt = stmt.offset(skip).limit(limit)
-        
+
         result = await self._session.execute(stmt)
         orm_list = result.scalars().all()
         return [media_to_entity(orm) for orm in orm_list]
@@ -165,50 +161,53 @@ class SecurityRepository(Repository, SecurityRepositoryInterface):
         await self._session.flush()
         return orm.id
 
-    async def get_ips_with_excessive_attempts(self, threshold: int, time_delta: datetime.timedelta, 
-        user_id: uuid.UUID
+    async def get_ips_with_excessive_attempts(
+        self, threshold: int, time_delta: datetime.timedelta, user_id: uuid.UUID
     ) -> List[str]:
         time_threshold = datetime.datetime.now() - time_delta
-        
+
         stmt = (
             select(LoginAttemptORM.ip_address)
             .where(
                 and_(
                     LoginAttemptORM.user_id == user_id,
                     LoginAttemptORM.timestamp >= time_threshold,
-                    LoginAttemptORM.successful == False
+                    not LoginAttemptORM.successful,
                 )
             )
             .group_by(LoginAttemptORM.ip_address)
             .having(func.count(LoginAttemptORM.id) >= threshold)
         )
-        
+
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
     async def cleanup_old_attempts(self, older_than_mins: int) -> None:
-        time_threshold = datetime.datetime.now() - datetime.timedelta(minutes=older_than_mins)
-        
-        stmt = delete(LoginAttemptORM).where(
-            LoginAttemptORM.timestamp < time_threshold
+        time_threshold = datetime.datetime.now() - datetime.timedelta(
+            minutes=older_than_mins
         )
-        
+
+        stmt = delete(LoginAttemptORM).where(LoginAttemptORM.timestamp < time_threshold)
+
         await self._session.execute(stmt)
         await self._session.flush()
 
-    async def get_user_attempts(self, user_id: uuid.UUID, 
-        since: Optional[datetime.datetime] = None, successful: Optional[bool] = None
+    async def get_user_attempts(
+        self,
+        user_id: uuid.UUID,
+        since: Optional[datetime.datetime] = None,
+        successful: Optional[bool] = None,
     ) -> List[LoginAttempt]:
         stmt = select(LoginAttemptORM).where(LoginAttemptORM.user_id == user_id)
-        
+
         if since:
             stmt = stmt.where(LoginAttemptORM.timestamp >= since)
-            
+
         if successful is not None:
             stmt = stmt.where(LoginAttemptORM.successful == successful)
-            
+
         stmt = stmt.order_by(LoginAttemptORM.timestamp.desc())
-        
+
         result = await self._session.execute(stmt)
         orm_list = result.scalars().all()
         return [login_attempt_to_entity(orm) for orm in orm_list]

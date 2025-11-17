@@ -31,9 +31,9 @@ CREATE TABLE media (
     owner_id UUID NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_media_owner 
-        FOREIGN KEY (owner_id) 
-        REFERENCES users(id) 
+    CONSTRAINT fk_media_owner
+        FOREIGN KEY (owner_id)
+        REFERENCES users(id)
         ON DELETE CASCADE
 );
 
@@ -47,9 +47,9 @@ CREATE TABLE login_attempts (
     user_agent TEXT,
     user_agent_hash VARCHAR(64),
     failure_reason VARCHAR(255),
-    CONSTRAINT fk_login_attempts_user 
-        FOREIGN KEY (user_id) 
-        REFERENCES users(id) 
+    CONSTRAINT fk_login_attempts_user
+        FOREIGN KEY (user_id)
+        REFERENCES users(id)
         ON DELETE CASCADE
 );
 
@@ -78,14 +78,14 @@ END;
 $$ language 'plpgsql';
 
 -- Триггеры для автоматического обновления updated_at
-CREATE TRIGGER update_users_updated_at 
-    BEFORE UPDATE ON users 
-    FOR EACH ROW 
+CREATE TRIGGER update_users_updated_at
+    BEFORE UPDATE ON users
+    FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_media_updated_at 
-    BEFORE UPDATE ON media 
-    FOR EACH ROW 
+CREATE TRIGGER update_media_updated_at
+    BEFORE UPDATE ON media
+    FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
 -- Функция для автоматического хеширования user_agent
@@ -102,12 +102,12 @@ END;
 $$ language 'plpgsql';
 
 -- Триггер для автоматического хеширования user_agent
-CREATE TRIGGER hash_login_attempts_user_agent 
-    BEFORE INSERT OR UPDATE ON login_attempts 
-    FOR EACH ROW 
+CREATE TRIGGER hash_login_attempts_user_agent
+    BEFORE INSERT OR UPDATE ON login_attempts
+    FOR EACH ROW
     EXECUTE FUNCTION hash_user_agent();
 
 -- Вставка тестовых данных
-INSERT INTO users (email, role, hash_password) VALUES 
+INSERT INTO users (email, role, hash_password) VALUES
 ('admin@example.com', 'ADMIN', '$2b$12$2NzVGRu/W1wB4ww4SjZxHOIVhPsV3fUcAtt7TGghZ1jTtaSG11M2e'), -- password: Test1234
 ('user@example.com', 'USER', '$2b$12$2NzVGRu/W1wB4ww4SjZxHOIVhPsV3fUcAtt7TGghZ1jTtaSG11M2e'); -- password: Test1234

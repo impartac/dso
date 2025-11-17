@@ -10,7 +10,7 @@ class UnitOfWork(UnitOfWorkInterface):
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
         self._session: Optional[AsyncSession] = None
-        
+
         # Repositories
         self._user_repository: Optional[UserRepository] = None
         self._media_repository: Optional[MediaRepository] = None
@@ -25,7 +25,7 @@ class UnitOfWork(UnitOfWorkInterface):
             await self.rollback()
         else:
             await self.commit()
-        
+
         if self._session:
             await self._session.close()
 

@@ -1,4 +1,3 @@
-import json
 import re
 import uuid
 from datetime import datetime
@@ -11,12 +10,12 @@ from ..domain.value_objects import MediaStatus, MediaType, UserRole
 
 class JSONEncodable(BaseModel):
     """Базовый класс для моделей с поддержкой сериализации datetime"""
-    
+
     def dict(self, *args, **kwargs) -> dict[str, Any]:
         """Переопределяем dict для сериализации datetime"""
         d = super().model_dump(*args, **kwargs)
         return self._convert_datetime_to_iso(d)
-    
+
     def _convert_datetime_to_iso(self, obj: Any) -> Any:
         """Рекурсивно преобразует datetime в ISO строку"""
         if isinstance(obj, datetime):
@@ -28,27 +27,30 @@ class JSONEncodable(BaseModel):
         else:
             return obj
 
+
 class MediaCreateRequest(BaseModel):
     kind: MediaType
     name: str
     title: str
     status: MediaStatus = MediaStatus.DRAFT
 
-    @field_validator('name')
+    @field_validator("name")
     def validate_name(cls, v):
-        if not re.match(r'^[a-zA-Z0-9_.-]+$', v):
-            raise ValueError('Invalid file name')
+        if not re.match(r"^[a-zA-Z0-9_.-]+$", v):
+            raise ValueError("Invalid file name")
         return v
 
-    @field_validator('title')
+    @field_validator("title")
     def validate_title(cls, v):
         if len(v) > 255:
-            raise ValueError('Title too long')
+            raise ValueError("Title too long")
         return v
+
 
 class MediaUpdateRequest(BaseModel):
     title: Optional[str] = None
     status: Optional[MediaStatus] = None
+
 
 class MediaResponse(JSONEncodable):
     id: uuid.UUID
@@ -62,35 +64,37 @@ class MediaResponse(JSONEncodable):
 
     class Config:
         from_attributes = True
-    
+
+
 class UserCreateRequest(BaseModel):
     email: EmailStr
     password: str
     role: UserRole = UserRole.USER
 
-    @field_validator('password')
+    @field_validator("password")
     def validate_password(cls, v):
         if len(v) < 8:
-            raise ValueError('Password must be at least 8 characters long')
+            raise ValueError("Password must be at least 8 characters long")
         if len(v) > 128:
-            raise ValueError('Password must be less than 128 characters long')
-        if not re.search(r'[A-Z]', v):
-            raise ValueError('Password must contain at least one uppercase letter')
-        if not re.search(r'[a-z]', v):
-            raise ValueError('Password must contain at least one lowercase letter')
-        if not re.search(r'\d', v):
-            raise ValueError('Password must contain at least one digit')
+            raise ValueError("Password must be less than 128 characters long")
+        if not re.search(r"[A-Z]", v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not re.search(r"[a-z]", v):
+            raise ValueError("Password must contain at least one lowercase letter")
+        if not re.search(r"\d", v):
+            raise ValueError("Password must contain at least one digit")
         if not re.search(r'[!@#$%^&*(),.?":{}|<>]', v):
-            raise ValueError('Password must contain at least one special character')
+            raise ValueError("Password must contain at least one special character")
         return v
 
-    @field_validator('email')
+    @field_validator("email")
     def validate_email_domain(cls, v):
         # Простая проверка домена
-        domain = v.split('@')[-1]
-        if domain in ['example.com', 'test.com']:
-            raise ValueError('Please use a real email domain')
+        domain = v.split("@")[-1]
+        if domain in ["example.com", "test.com"]:
+            raise ValueError("Please use a real email domain")
         return v
+
 
 class UserResponse(JSONEncodable):
     id: uuid.UUID
@@ -102,9 +106,11 @@ class UserResponse(JSONEncodable):
     class Config:
         from_attributes = True
 
+
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -112,15 +118,18 @@ class TokenResponse(BaseModel):
     expires_in: int
     user: UserResponse
 
+
 class ErrorResponse(JSONEncodable):
     error: str
     correlation_id: str
     timestamp: datetime
 
+
 class SuccessResponse(JSONEncodable):
     message: str
     correlation_id: str
     timestamp: datetime
+
 
 class RegistrationResponse(BaseModel):
     message: str

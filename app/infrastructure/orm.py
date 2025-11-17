@@ -30,8 +30,8 @@ class UserORM(Base):
     )
     role: Mapped[UserRole] = mapped_column(
         SQLEnum(UserRole, name="user_role"),  # Явно указываем имя типа
-        nullable=False, 
-        default=UserRole.USER
+        nullable=False,
+        default=UserRole.USER,
     )
     hash_password: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(
@@ -68,15 +68,14 @@ class MediaORM(Base):
         PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     kind: Mapped[MediaType] = mapped_column(
-        SQLEnum(MediaType, name="media_type"),  # Явно указываем имя типа
-        nullable=False
+        SQLEnum(MediaType, name="media_type"), nullable=False  # Явно указываем имя типа
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[MediaStatus] = mapped_column(
         SQLEnum(MediaStatus, name="media_status"),  # Явно указываем имя типа
-        nullable=False, 
-        default=MediaStatus.DRAFT
+        nullable=False,
+        default=MediaStatus.DRAFT,
     )
     owner_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True

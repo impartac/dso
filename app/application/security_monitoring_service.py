@@ -11,7 +11,9 @@ class SecurityMonitoringService:
     _security_repo: SecurityRepositoryInterface
     _security_policy: SecurityPolicy
 
-    def __init__(self, repo: SecurityRepositoryInterface, policy: SecurityPolicy) -> None:
+    def __init__(
+        self, repo: SecurityRepositoryInterface, policy: SecurityPolicy
+    ) -> None:
         self._security_repo = repo
         self._security_policy = policy
 

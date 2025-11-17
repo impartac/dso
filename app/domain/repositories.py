@@ -35,16 +35,26 @@ class MediaRepositoryInterface(ABC):
     @abstractmethod
     async def delete(self, id: uuid.UUID) -> Media:
         pass
-    
+
     @abstractmethod
-    async def get_by_owner(self, user_id: uuid.UUID, status: Optional[MediaStatus] = MediaStatus.PUBLISHED, 
-                           skip: int = 0, limit : int = 10) -> List[Media]:
+    async def get_by_owner(
+        self,
+        user_id: uuid.UUID,
+        status: Optional[MediaStatus] = MediaStatus.PUBLISHED,
+        skip: int = 0,
+        limit: int = 10,
+    ) -> List[Media]:
         pass
 
     @abstractmethod
-    async def get_by_status(self, status: Optional[MediaStatus] = MediaStatus.PUBLISHED, 
-        skip: int = 0, limit : int = 10) -> List[Media]:
+    async def get_by_status(
+        self,
+        status: Optional[MediaStatus] = MediaStatus.PUBLISHED,
+        skip: int = 0,
+        limit: int = 10,
+    ) -> List[Media]:
         pass
+
 
 class SecurityRepositoryInterface(ABC):
     @abstractmethod

@@ -1,7 +1,7 @@
 import datetime
-from typing import Optional
 import uuid
 from dataclasses import dataclass
+from typing import Optional
 
 from pydantic import BaseModel
 

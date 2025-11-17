@@ -7,13 +7,10 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, 
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from ..application.security_monitoring_service import SecurityMonitoringService
-
 from ..application.dtos import LoginAttemptDTO
-
-from ..domain.errors import LoginException, LoginRateLimitException
-
+from ..application.security_monitoring_service import SecurityMonitoringService
 from ..domain.entities import User
+from ..domain.errors import LoginException, LoginRateLimitException
 from ..domain.value_objects import Email, MediaStatus, SecurityPolicy
 from ..infrastructure.config import logger, settings
 from ..infrastructure.unit_of_work import UnitOfWork

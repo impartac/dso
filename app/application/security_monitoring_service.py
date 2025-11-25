@@ -23,7 +23,6 @@ class SecurityMonitoringService:
                 raise LoginRateLimitException(
                     dto.timestamp + self._security_policy.ip_block_duration
                 )
-            raise LoginException()
 
     async def _record_login_attemp(self, dto: LoginAttemptDTO) -> UUID:
 
@@ -38,6 +37,7 @@ class SecurityMonitoringService:
             await self._security_repo.get_ips_with_excessive_attempts(
                 self._security_policy.max_failed_login_attempts,
                 self._security_policy.failed_attempts_time_window,
+                dto.user_id
             )
         )
 

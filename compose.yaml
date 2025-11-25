@@ -1,46 +1,225 @@
-version: '3.8'
+version: "3.9"
 
 services:
-  app:
-    build: .
-    ports:
-      - "8000:8000"
+  # ============================================================================
+  # PostgreSQL Database Service
+  # ============================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: app-postgres
+    restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql+asyncpg://media_user:media_password@db:5432/mediacatalog
-      - SECRET_KEY=your-very-secure-secret-key-change-in-production
-      - DEBUG=false
-      - ENVIRONMENT=dev
-    depends_on:
-      - db
-    volumes:
-      - ./logs:/app/logs
-    # restart: unless-stopped
-    networks:
-      - media-network
-
-  db:
-    image: postgres:15
-    environment:
-      - POSTGRES_DB=mediacatalog
-      - POSTGRES_USER=media_user
-      - POSTGRES_PASSWORD=media_password
+      POSTGRES_USER: ${DB_USER:-appuser}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secure_password_123}
+      POSTGRES_DB: ${DB_NAME:-appdb}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
-      - "5555:5432"
+      - "5432:5432"
     networks:
-      - media-network
-    restart: unless-stopped
+      - app-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U media_user -d mediacatalog"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-appuser}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/run/postgresql
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    profiles:
+      - prod
+      - dev
+
+  # ============================================================================
+  # Main Application Service
+  # ============================================================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: app-main
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # Application Configuration
+      PYTHONUNBUFFERED: "1"
+      DEBUG: "${DEBUG:-false}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+      
+      # Database Configuration
+      DATABASE_URL: "postgresql://${DB_USER:-appuser}:${DB_PASSWORD:-secure_password_123}@postgres:5432/${DB_NAME:-appdb}"
+      
+      # Redis Configuration
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-redis_secure_pass}@redis:6379/0"
+      
+      # Application Secrets (should be managed via Docker Secrets in production)
+      SECRET_KEY: "${SECRET_KEY:-change-me-in-production}"
+      API_KEY: "${API_KEY:-change-me-in-production}"
+    
+    ports:
+      - "8000:8000"
+    
+    volumes:
+      # Application code (read-only)
+      - ./app:/app/app:ro
+      
+      # Temporary directories (read-write)
+      - /tmp/app
+      
+      # Log directory (read-write)
+      - ./logs:/var/log/app
+    
+    networks:
+      - app-network
+    
+    # Resource limits to prevent DoS attacks
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+    
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    
+    cap_drop:
+      - ALL
+    
+    cap_add:
+      - NET_BIND_SERVICE
+    
+    # Read-only root filesystem with tmpfs for writeable paths
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/run
+      - /var/cache
+    
+    # Healthcheck
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 10s
+    
+    profiles:
+      - prod
+      - dev
 
+  # ============================================================================
+  # Development Service (only for local development)
+  # ============================================================================
+  app-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: app-dev
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    
+    environment:
+      PYTHONUNBUFFERED: "1"
+      DEBUG: "true"
+      LOG_LEVEL: "debug"
+      DATABASE_URL: "postgresql://${DB_USER:-appuser}:${DB_PASSWORD:-secure_password_123}@postgres:5432/${DB_NAME:-appdb}"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-redis_secure_pass}@redis:6379/0"
+    
+    ports:
+      - "8000:8000"
+    
+    volumes:
+      # Mount source code for hot reload
+      - ./app:/app/app
+      - ./tests:/app/tests
+    
+    networks:
+      - app-network
+    
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    
+    profiles:
+      - dev
+
+  # ============================================================================
+  # Linting and Code Quality Service
+  # ============================================================================
+  lint:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: app-lint
+    command: bash -c "flake8 app tests && black --check app tests && isort --check-only app tests"
+    
+    volumes:
+      - ./app:/app/app:ro
+      - ./tests:/app/tests:ro
+    
+    profiles:
+      - dev
+      - ci
+
+  # ============================================================================
+  # Testing Service
+  # ============================================================================
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: app-test
+    command: pytest -v --cov=app --cov-report=html tests/
+    
+    environment:
+      DATABASE_URL: "postgresql://${DB_USER:-appuser}:${DB_PASSWORD:-secure_password_123}@postgres:5432/${DB_NAME:-appdb}_test"
+    
+    volumes:
+      - ./app:/app/app:ro
+      - ./tests:/app/tests:ro
+      - ./coverage:/app/coverage
+    
+    depends_on:
+      postgres:
+        condition: service_healthy
+    
+    profiles:
+      - dev
+      - ci
+
+# ============================================================================
+# Networks
+# ============================================================================
+networks:
+  app-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# ============================================================================
+# Volumes
+# ============================================================================
 volumes:
   postgres_data:
-
-networks:
-  media-network:
-    driver: bridge
+    driver: local
+  redis_data:
+    driver: local

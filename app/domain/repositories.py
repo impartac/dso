@@ -67,7 +67,7 @@ class SecurityRepositoryInterface(ABC):
 
     @abstractmethod
     async def get_ips_with_excessive_attempts(
-        self, threshhold: int, time_delta: datetime.timedelta
+        self, threshhold: int, time_delta: datetime.timedelta, user_id : uuid.UUID
     ) -> List[str]:
         pass
 

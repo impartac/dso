@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Annotated, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
 from ..application.dtos import LoginAttemptDTO
 from ..application.security_monitoring_service import SecurityMonitoringService
@@ -186,47 +186,112 @@ async def login(
     login_data: LoginRequest,
     request: Request,
     uow: Annotated[UnitOfWork, Depends(get_uow)],
+    response: Response,  # Добавляем параметр response
 ):
     """Аутентификация пользователя (NFR-1, NFR-5, NFR-7)"""
     correlation_id = str(uuid.uuid4())
 
-    try:
-        user_repo = await uow.get_user_repository()
-        security_repo = await uow.get_security_repository()
+    async with uow:
+        try:
+            user_repo = await uow.get_user_repository()
+            security_repo = await uow.get_security_repository()
 
-        # Инициализация сервиса мониторинга безопасности
-        security_policy = SecurityPolicy(
-            max_failed_login_attempts=5,
-            failed_attempts_time_window=timedelta(minutes=5),
-            ip_block_duration=timedelta(minutes=15),
-        )
-        security_monitoring = SecurityMonitoringService(security_repo, security_policy)
+            # Инициализация сервиса мониторинга безопасности
+            security_policy = SecurityPolicy(
+                max_failed_login_attempts=5,
+                failed_attempts_time_window=timedelta(minutes=5),
+                ip_block_duration=timedelta(minutes=15),
+            )
+            security_monitoring = SecurityMonitoringService(security_repo, security_policy)
 
-        # Получаем IP адрес клиента
-        client_ip = request.client.host if request.client else "unknown"
-        user_agent = request.headers.get("user-agent")
+            # Получаем IP адрес клиента
+            client_ip = request.client.host if request.client else "unknown"
+            user_agent = request.headers.get("user-agent")
 
-        # Ищем пользователя
-        user = await user_repo.get_by_email(login_data.email)
+            # Ищем пользователя
+            user = await user_repo.get_by_email(login_data.email)
+            if not user:
+                # Пользователь не найден - создаем DTO для неудачной попытки
+                # Используем временный UUID для несуществующего пользователя
+                temp_user_id = uuid.uuid4()
+                login_dto = LoginAttemptDTO(
+                    ip_address=client_ip,
+                    user_id=temp_user_id,
+                    timestamp=datetime.now(),
+                    successful=False,
+                    user_agent=user_agent,
+                )
 
-        if not user:
-            # Пользователь не найден - создаем DTO для неудачной попытки
-            # Используем временный UUID для несуществующего пользователя
-            temp_user_id = uuid.uuid4()
+                try:
+                    await security_monitoring.process(login_dto)
+                except LoginRateLimitException as e:
+                    retry_seconds = int((e.retry_after - datetime.now()).total_seconds())
+                    logger.warning(
+                        f"Login rate limit exceeded for IP {client_ip} - \
+                            Correlation ID: {correlation_id}"
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                        detail="Too many login attempts. Please try again later.",
+                        headers={"Retry-After": str(retry_seconds)},
+                    )
+
+                # Имитация проверки пароля для предотвращения timing attacks
+                verify_password(login_data.password, get_password_hash("dummy_password"))
+
+                logger.warning(
+                    f"Failed login attempt: user not found - Email: {mask_pii(login_data.email)} - \
+                    Correlation ID: {correlation_id}"
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid email or password",
+                )
+
+            # Создаем DTO для попытки входа
             login_dto = LoginAttemptDTO(
                 ip_address=client_ip,
-                user_id=temp_user_id,
-                timestamp=datetime.utcnow(),
-                successful=False,
+                user_id=user.id,
+                timestamp=datetime.now(),
+                successful=True,  # Пока предполагаем неудачу
                 user_agent=user_agent,
             )
 
+            # Проверяем пароль
+            if not verify_password(login_data.password, user.hash_password):
+                try:
+                    await security_monitoring.process(login_dto)
+                except LoginRateLimitException as e:
+                    retry_seconds = int((e.retry_after - datetime.utcnow()).total_seconds())
+                    logger.warning(
+                        f"Login rate limit exceeded for user {user.id} -\
+                            Correlation ID: {correlation_id}"
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                        detail="Too many login attempts. Please try again later.",
+                        headers={"Retry-After": str(retry_seconds)},
+                    )
+
+                logger.warning(
+                    f"Failed login attempt: invalid password - User ID: {user.id} -\
+                        Correlation ID: {correlation_id}"
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid email or password",
+                )
+
+            # Пароль верный - обновляем DTO для успешной попытки
+            login_dto.successful = True
+
             try:
                 await security_monitoring.process(login_dto)
             except LoginRateLimitException as e:
+                # Это маловероятно для успешной попытки, но обрабатываем на всякий случай
                 retry_seconds = int((e.retry_after - datetime.utcnow()).total_seconds())
                 logger.warning(
-                    f"Login rate limit exceeded for IP {client_ip} - \
+                    f"Login rate limit exceeded during successful login - User ID: {user.id} -\
                         Correlation ID: {correlation_id}"
                 )
                 raise HTTPException(
@@ -235,110 +300,67 @@ async def login(
                     headers={"Retry-After": str(retry_seconds)},
                 )
 
-            # Имитация проверки пароля для предотвращения timing attacks
-            verify_password(login_data.password, get_password_hash("dummy_password"))
+            # Создание JWT токена
+            access_token = create_access_token(data={"sub": str(user.id)})
+            
+            # Установка токена в куки
+            token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+            response.set_cookie(
+                key="access_token",
+                value=access_token,
+                httponly=True,  # Защита от XSS атак
+                secure=True,    # Только HTTPS в production
+                samesite="lax", # Защита от CSRF атак
+                max_age=int(token_expires.total_seconds()),
+                expires=int((datetime.now() + token_expires).timestamp()),
+            )
 
-            logger.warning(
-                f"Failed login attempt: user not found - Email: {mask_pii(login_data.email)} - \
-                Correlation ID: {correlation_id}"
+            # Дополнительная кука для хранения информации о пользователе (не чувствительная)
+            response.set_cookie(
+                key="user_info",
+                value=f"{user.id}:{user.role}",
+                httponly=False,  # Доступна из JavaScript
+                secure=True,
+                samesite="lax",
+                max_age=int(token_expires.total_seconds()),
+            )
+
+            await uow.commit()
+
+            logger.info(
+                f"Successful login: User ID: {user.id} - Correlation ID: {correlation_id}"
+            )
+
+            return TokenResponse(
+                access_token=access_token,
+                expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+                user=UserResponse(
+                    id=user.id,
+                    email=str(user.email),
+                    role=user.role,
+                    created_at=user.created_at,
+                    updated_at=user.updated_at,
+                ),
+            )
+
+        except HTTPException:
+            await uow.rollback()
+            raise
+        except LoginException as e:
+            await uow.rollback()
+            logger.error(f"Login exception: {e} - Correlation ID: {correlation_id}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication failed"
+            )
+        except Exception as e:
+            await uow.rollback()
+            logger.error(
+                f"Unexpected error during login: {e} - Correlation ID: {correlation_id}"
             )
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal server error during login",
             )
-
-        # Создаем DTO для попытки входа
-        login_dto = LoginAttemptDTO(
-            ip_address=client_ip,
-            user_id=user.id,
-            timestamp=datetime.utcnow(),
-            successful=False,  # Пока предполагаем неудачу
-            user_agent=user_agent,
-        )
-
-        # Проверяем пароль
-        if not verify_password(login_data.password, user.hash_password):
-            try:
-                await security_monitoring.process(login_dto)
-            except LoginRateLimitException as e:
-                retry_seconds = int((e.retry_after - datetime.utcnow()).total_seconds())
-                logger.warning(
-                    f"Login rate limit exceeded for user {user.id} -\
-                        Correlation ID: {correlation_id}"
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail="Too many login attempts. Please try again later.",
-                    headers={"Retry-After": str(retry_seconds)},
-                )
-
-            logger.warning(
-                f"Failed login attempt: invalid password - User ID: {user.id} -\
-                    Correlation ID: {correlation_id}"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password",
-            )
-
-        # Пароль верный - обновляем DTO для успешной попытки
-        login_dto.successful = True
-
-        try:
-            await security_monitoring.process(login_dto)
-        except LoginRateLimitException as e:
-            # Это маловероятно для успешной попытки, но обрабатываем на всякий случай
-            retry_seconds = int((e.retry_after - datetime.utcnow()).total_seconds())
-            logger.warning(
-                f"Login rate limit exceeded during successful login - User ID: {user.id} -\
-                    Correlation ID: {correlation_id}"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Too many login attempts. Please try again later.",
-                headers={"Retry-After": str(retry_seconds)},
-            )
-
-        # Создание JWT токена
-        access_token = create_access_token(data={"sub": str(user.id)})
-
-        await uow.commit()
-
-        logger.info(
-            f"Successful login: User ID: {user.id} - Correlation ID: {correlation_id}"
-        )
-
-        return TokenResponse(
-            access_token=access_token,
-            expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-            user=UserResponse(
-                id=user.id,
-                email=str(user.email),
-                role=user.role,
-                created_at=user.created_at,
-                updated_at=user.updated_at,
-            ),
-        )
-
-    except HTTPException:
-        await uow.rollback()
-        raise
-    except LoginException as e:
-        await uow.rollback()
-        logger.error(f"Login exception: {e} - Correlation ID: {correlation_id}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication failed"
-        )
-    except Exception as e:
-        await uow.rollback()
-        logger.error(
-            f"Unexpected error during login: {e} - Correlation ID: {correlation_id}"
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error during login",
-        )
-
 
 @router.post("/auth/logout")
 async def logout():

@@ -11,7 +11,7 @@ class UnitOfWork(UnitOfWorkInterface):
         self._session_factory = session_factory
         self._session: Optional[AsyncSession] = None
 
-        # Repositories
+        # Repositories - инициализируем сразу как None
         self._user_repository: Optional[UserRepository] = None
         self._media_repository: Optional[MediaRepository] = None
         self._security_repository: Optional[SecurityRepository] = None
@@ -21,13 +21,24 @@ class UnitOfWork(UnitOfWorkInterface):
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if exc_type is not None:
-            await self.rollback()
-        else:
-            await self.commit()
+        try:
+            if exc_type is not None:
+                await self.rollback()
+            else:
+                await self.commit()
+        finally:
+            # Всегда закрываем сессию
+            if self._session:
+                await self._session.close()
+                self._session = None
+            # Сбрасываем репозитории при выходе из контекста
+            self._reset_repositories()
 
-        if self._session:
-            await self._session.close()
+    def _reset_repositories(self) -> None:
+        """Сбрасывает репозитории при завершении работы"""
+        self._user_repository = None
+        self._media_repository = None
+        self._security_repository = None
 
     async def get_user_repository(self) -> UserRepository:
         if self._user_repository is None:

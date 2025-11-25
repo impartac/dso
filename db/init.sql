@@ -106,8 +106,3 @@ CREATE TRIGGER hash_login_attempts_user_agent
     BEFORE INSERT OR UPDATE ON login_attempts
     FOR EACH ROW
     EXECUTE FUNCTION hash_user_agent();
-
--- Вставка тестовых данных
-INSERT INTO users (email, role, hash_password) VALUES
-('admin@example.com', 'ADMIN', '$2b$12$2NzVGRu/W1wB4ww4SjZxHOIVhPsV3fUcAtt7TGghZ1jTtaSG11M2e'), -- password: Test1234
-('user@example.com', 'USER', '$2b$12$2NzVGRu/W1wB4ww4SjZxHOIVhPsV3fUcAtt7TGghZ1jTtaSG11M2e'); -- password: Test1234

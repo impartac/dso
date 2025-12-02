@@ -4,8 +4,8 @@ from typing import Optional
 
 import bcrypt
 import jwt
-
-from ..infrastructure.config import settings
+from fastapi import Request
+from infrastructure.config import settings
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -45,3 +45,25 @@ def get_password_hash(password: str) -> str:
 def hash_sha256(data: str) -> str:
     """SHA256 хеш для user agent"""
     return hashlib.sha256(data.encode()).hexdigest()
+
+
+async def get_client_ip(request: Request) -> str:
+    headers_to_check = [
+        "x-forwarded-for",
+        "x-real-ip",
+        "x-client-ip",
+        "cf-connecting-ip",
+        "true-client-ip",
+    ]
+
+    for header in headers_to_check:
+        ip = request.headers.get(header)
+        if ip:
+            if header == "x-forwarded-for" and "," in ip:
+                ip = ip.split(",")[0].strip()
+            return ip
+
+    if request.client and request.client.host:
+        return request.client.host
+
+    return "unknown"

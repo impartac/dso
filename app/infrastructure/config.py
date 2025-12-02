@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[logging.FileHandler("app.log"), logging.StreamHandler()],
 )
@@ -16,6 +16,11 @@ security = HTTPBearer()
 
 
 class Settings(BaseSettings):
+    
+    DB_USER: str = ""
+    DB_PASSWORD: str = ""
+    DB_NAME: str = ""
+    
     # JWT настройки (NFR-5)
     SECRET_KEY: str = "your-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
@@ -24,14 +29,9 @@ class Settings(BaseSettings):
     # CORS настройки
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
     ALLOWED_HOSTS: List[str] = ["localhost", "127.0.0.1"]
-
-    # Security настройки (NFR-1)
-    MAX_FAILED_LOGIN_ATTEMPTS: int = 5
-    FAILED_ATTEMPTS_TIME_WINDOW: int = 300  # 5 minutes
-    IP_BLOCK_DURATION: int = 900  # 15 minutes
-
+    
     # Database
-    DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost:5432/mediacatalog"
+    DATABASE_URL: str = "postgresql+asyncpg://user:password@postgres:5432/mediacatalog"
 
     # Database connection settings
     DB_POOL_SIZE: int = 5
@@ -51,7 +51,7 @@ class Settings(BaseSettings):
 settings = Settings()
 
 
-_engine = create_async_engine(settings.DATABASE_URL, echo=settings.DEBUG, future=True)
+_engine = create_async_engine(settings.DATABASE_URL, echo=False, future=True)
 
 session_factory = async_sessionmaker(
     bind=_engine, class_=AsyncSession, expire_on_commit=False, autoflush=False

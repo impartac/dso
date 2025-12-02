@@ -3,9 +3,8 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional
 
+from domain.value_objects import MediaStatus, MediaType, UserRole
 from pydantic import BaseModel, EmailStr, field_validator
-
-from ..domain.value_objects import MediaStatus, MediaType, UserRole
 
 
 class JSONEncodable(BaseModel):
@@ -48,6 +47,7 @@ class MediaCreateRequest(BaseModel):
 
 
 class MediaUpdateRequest(BaseModel):
+    id: uuid.UUID
     title: Optional[str] = None
     status: Optional[MediaStatus] = None
 
@@ -64,6 +64,10 @@ class MediaResponse(JSONEncodable):
 
     class Config:
         from_attributes = True
+
+class MediaDeleteResponse(JSONEncodable):
+    id: uuid.UUID
+    success : bool
 
 
 class UserCreateRequest(BaseModel):
@@ -135,3 +139,9 @@ class RegistrationResponse(BaseModel):
     message: str
     user_id: uuid.UUID
     email: str
+
+
+class LoginResponse(BaseModel):
+    message : str
+    token_type : str
+    expires_in : int

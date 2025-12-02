@@ -14,8 +14,8 @@ class Media:
     status: MediaStatus
     owner_id: uuid.UUID
     id: uuid.UUID = field(default_factory=uuid.uuid4)
-    created_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
-    updated_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
+    created_at: datetime.datetime = field(default_factory=datetime.datetime.now)
+    updated_at: datetime.datetime = field(default_factory=datetime.datetime.now)
 
     def __post_init__(self):
         # Ensure updated_at is set to created_at when first created
@@ -29,11 +29,11 @@ class User:
     role: UserRole
     hash_password: str
     id: uuid.UUID = field(default_factory=uuid.uuid4)
-    created_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
-    updated_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
+    created_at: datetime.datetime = field(default_factory=datetime.datetime.now)
+    updated_at: datetime.datetime = field(default_factory=datetime.datetime.now)
 
     def __post_init__(self):
-        # Ensure updated_at is set to created_at when first created
+
         if self.updated_at == self.created_at:
             self.updated_at = self.created_at
 
@@ -41,7 +41,10 @@ class User:
 @dataclass
 class LoginAttempt:
     ip_address: str
-    user_id: uuid.UUID
-    successful: bool
-    timestamp: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
-    user_agent: Optional[str] = None
+    timestamp: datetime.datetime = field(default_factory=datetime.datetime.now)
+
+
+@dataclass
+class CreateMediaAttempt:
+    user_id : uuid.UUID
+    timestamp: datetime.datetime = field(default_factory=datetime.datetime.now)

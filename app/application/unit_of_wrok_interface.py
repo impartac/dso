@@ -1,8 +1,9 @@
 from abc import ABC, abstractmethod
 
-from ..domain.repositories import (
+from domain.repositories import (
+    CreateMediaAttemptsRepositoryInterface,
+    LoginAttemptsRepositoryInterface,
     MediaRepositoryInterface,
-    SecurityRepositoryInterface,
     UserRepositoryInterface,
 )
 
@@ -13,7 +14,11 @@ class UnitOfWorkInterface(ABC):
         pass
 
     @abstractmethod
-    async def get_security_repository(self) -> SecurityRepositoryInterface:
+    async def get_login_attempts_repository(self) -> LoginAttemptsRepositoryInterface:
+        pass
+    
+    @abstractmethod
+    async def get_create_media_attempt_repository(self) -> CreateMediaAttemptsRepositoryInterface:
         pass
 
     @abstractmethod

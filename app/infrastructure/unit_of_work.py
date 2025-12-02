@@ -1,9 +1,14 @@
 from typing import Optional
 
+from application.unit_of_wrok_interface import UnitOfWorkInterface
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from ..application.unit_of_wrok_interface import UnitOfWorkInterface
-from .repositories import MediaRepository, SecurityRepository, UserRepository
+from .repositories import (
+    CreateMediaAttemptsRepository,
+    LoginAttemptsRepository,
+    MediaRepository,
+    UserRepository,
+)
 
 
 class UnitOfWork(UnitOfWorkInterface):
@@ -14,8 +19,9 @@ class UnitOfWork(UnitOfWorkInterface):
         # Repositories - инициализируем сразу как None
         self._user_repository: Optional[UserRepository] = None
         self._media_repository: Optional[MediaRepository] = None
-        self._security_repository: Optional[SecurityRepository] = None
-
+        self._login_attempts_repository: Optional[LoginAttemptsRepository] = None
+        self._create_media_attemp_repository : Optional[CreateMediaAttemptsRepository] = None
+        
     async def __aenter__(self):
         self._session = self._session_factory()
         return self
@@ -38,7 +44,8 @@ class UnitOfWork(UnitOfWorkInterface):
         """Сбрасывает репозитории при завершении работы"""
         self._user_repository = None
         self._media_repository = None
-        self._security_repository = None
+        self._login_attempts_repository = None
+        self._create_media_attemp_repository = None
 
     async def get_user_repository(self) -> UserRepository:
         if self._user_repository is None:
@@ -47,12 +54,19 @@ class UnitOfWork(UnitOfWorkInterface):
             self._user_repository = UserRepository(self._session)
         return self._user_repository
 
-    async def get_security_repository(self) -> SecurityRepository:
-        if self._security_repository is None:
+    async def get_login_attempts_repository(self) -> LoginAttemptsRepository:
+        if self._login_attempts_repository is None:
             if not self._session:
                 raise RuntimeError("Session is not initialized. Use context manager.")
-            self._security_repository = SecurityRepository(self._session)
-        return self._security_repository
+            self._login_attempts_repository = LoginAttemptsRepository(self._session)
+        return self._login_attempts_repository
+    
+    async def get_create_media_attempt_repository(self) -> CreateMediaAttemptsRepository:
+        if self._create_media_attemp_repository is None:
+            if not self._session:
+                raise RuntimeError("Session is not initialized. Use context manager.")
+            self._create_media_attemp_repository = CreateMediaAttemptsRepository(self._session)
+        return self._create_media_attemp_repository
 
     async def get_media_repository(self) -> MediaRepository:
         if self._media_repository is None:

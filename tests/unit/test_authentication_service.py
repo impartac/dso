@@ -2,7 +2,7 @@ import sys
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock
 
 import jwt
 import pytest
@@ -13,8 +13,7 @@ from app.application.services.authentication_service import (
     AuthenticationAttempt,
     AuthenticationService,
 )
-from app.domain.entities import User
-from app.domain.value_objects import Email, UserRole
+from app.domain.value_objects import Email
 
 # Добавляем корень проекта в PYTHONPATH
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -36,17 +35,12 @@ def auth_service(mock_uow, mock_hasher):
         hasher=mock_hasher,
         secret_key="test_secret_key",
         algorithm="HS256",
-        access_token_expire_minutes=30
+        access_token_expire_minutes=30,
     )
 
 
 @pytest.mark.asyncio
-async def test_login_successful(
-    auth_service,
-    mock_uow,
-    mock_hasher,
-    test_user
-):
+async def test_login_successful(auth_service, mock_uow, mock_hasher, test_user):
     """Тест успешного входа"""
     # Arrange
     email = Email("test@example.com")
@@ -62,8 +56,7 @@ async def test_login_successful(
     assert result.successful is True
     assert result.token != ""
     mock_uow.get_user_repository.assert_called_once()
-    mock_hasher.verify.assert_called_once_with(
-        password, test_user.hash_password)
+    mock_hasher.verify.assert_called_once_with(password, test_user.hash_password)
 
 
 @pytest.mark.asyncio
@@ -100,8 +93,7 @@ async def test_login_wrong_password(auth_service, mock_uow, mock_hasher, test_us
     # Assert
     assert result.successful is False
     assert result.token == ""
-    mock_hasher.verify.assert_called_once_with(
-        password, test_user.hash_password)
+    mock_hasher.verify.assert_called_once_with(password, test_user.hash_password)
 
 
 @pytest.mark.asyncio
@@ -118,7 +110,7 @@ async def test_create_token(auth_service):
     decoded = jwt.decode(
         token,
         auth_service._AuthenticationService__SECRET_KEY,
-        algorithms=[auth_service._AuthenticationService__ALGORITHM]
+        algorithms=[auth_service._AuthenticationService__ALGORITHM],
     )
 
     assert decoded["user_id"] == str(user_id)
@@ -156,10 +148,9 @@ async def test_validate_token_invalid_signature(auth_service):
     """Тест валидации токена с неверной подписью"""
     # Arrange
     token = jwt.encode(
-        {"user_id": str(uuid.uuid4()), "exp": datetime.now() +
-         timedelta(minutes=30)},
+        {"user_id": str(uuid.uuid4()), "exp": datetime.now() + timedelta(minutes=30)},
         "wrong_secret_key",
-        algorithm="HS256"
+        algorithm="HS256",
     )
 
     # Act/Assert
@@ -174,7 +165,7 @@ async def test_validate_token_no_user_id(auth_service):
     token = jwt.encode(
         {"exp": datetime.now() + timedelta(minutes=30)},
         auth_service._AuthenticationService__SECRET_KEY,
-        algorithm="HS256"
+        algorithm="HS256",
     )
 
     # Act
@@ -229,10 +220,7 @@ async def test_validate_token_user_not_found(auth_service, mock_uow):
 def test_authentication_attempt_dataclass():
     """Тест структуры AuthenticationAttempt"""
     # Arrange & Act
-    attempt = AuthenticationAttempt(
-        successful=True,
-        token="test_token"
-    )
+    attempt = AuthenticationAttempt(successful=True, token="test_token")
 
     # Assert
     assert attempt.successful is True

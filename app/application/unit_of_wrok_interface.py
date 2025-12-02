@@ -16,9 +16,11 @@ class UnitOfWorkInterface(ABC):
     @abstractmethod
     async def get_login_attempts_repository(self) -> LoginAttemptsRepositoryInterface:
         pass
-    
+
     @abstractmethod
-    async def get_create_media_attempt_repository(self) -> CreateMediaAttemptsRepositoryInterface:
+    async def get_create_media_attempt_repository(
+        self,
+    ) -> CreateMediaAttemptsRepositoryInterface:
         pass
 
     @abstractmethod

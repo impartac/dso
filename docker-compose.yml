@@ -49,14 +49,14 @@ services:
       - "8000:8000"
     networks:
       - app-network
-    
+
     # healthcheck:
     #   test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
     #   interval: 30s
     #   timeout: 10s
     #   retries: 3
     #   start_period: 10s
-    
+
     profiles:
       - prod
       - dev
@@ -70,7 +70,7 @@ services:
       dockerfile: Dockerfile
     container_name: app-dev
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-    
+
     environment:
       PYTHONUNBUFFERED: "1"
       DEBUG: "true"
@@ -78,19 +78,19 @@ services:
       DATABASE_URL: "${DATABASE_URL}"
     ports:
       - "8000:8000"
-    
+
     volumes:
       # Mount source code for hot reload
       - ./app:/app/app
       - ./tests:/app/tests
-    
+
     networks:
       - app-network
-    
+
     depends_on:
       postgres:
         condition: service_healthy
-    
+
     profiles:
       - dev
 
@@ -103,11 +103,11 @@ services:
       dockerfile: Dockerfile
     container_name: app-lint
     command: bash -c "flake8 app tests && black --check app tests && isort --check-only app tests"
-    
+
     volumes:
       - ./app:/app/app:ro
       - ./tests:/app/tests:ro
-    
+
     profiles:
       - dev
       - ci
@@ -121,19 +121,19 @@ services:
       dockerfile: Dockerfile
     container_name: app-test
     command: pytest -v --cov=app --cov-report=html tests/
-    
+
     environment:
       DATABASE_URL: "postgresql://${DB_USER:-appuser}:${DB_PASSWORD:-secure_password_123}@postgres:5432/${DB_NAME:-appdb}_test"
-    
+
     volumes:
       - ./app:/app/app:ro
       - ./tests:/app/tests:ro
       - ./coverage:/app/coverage
-    
+
     depends_on:
       postgres:
         condition: service_healthy
-    
+
     profiles:
       - dev
       - ci

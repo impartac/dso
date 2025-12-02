@@ -2,17 +2,15 @@ import uuid
 from typing import List, Optional
 
 from domain.entities import Media
-from domain.repositories import MediaRepositoryInterface
 from domain.value_objects import MediaStatus, MediaType
 
 from ..unit_of_wrok_interface import UnitOfWorkInterface
-from .authorization_service import AuthorizationService
 
 
 class MediaCRUDService:
-    
-    _uow : UnitOfWorkInterface
-    
+
+    _uow: UnitOfWorkInterface
+
     def __init__(self, uow: UnitOfWorkInterface):
         self._uow = uow
 
@@ -24,14 +22,14 @@ class MediaCRUDService:
         title: str,
         status: MediaStatus = MediaStatus.DRAFT,
     ) -> Media:
-        
+
         media = Media(
             kind=kind, name=name, title=title, status=status, owner_id=user_id
         )
         async with self._uow:
             media_repository = await self._uow.get_media_repository()
             media_id = await media_repository.insert(media)
-        
+
         media.id = media_id
 
         return media
@@ -55,12 +53,12 @@ class MediaCRUDService:
 
         async with self._uow:
             media_repository = await self._uow.get_media_repository()
-            
+
             media = await media_repository.get(media_id)
 
             if not media:
                 return None
-            
+
             if title is not None:
                 media.title = title
             if status is not None:
@@ -76,15 +74,15 @@ class MediaCRUDService:
             media_id: ID медиа
             user_id: ID пользователя
         """
-        
+
         async with self._uow:
             media_repository = await self._uow.get_media_repository()
-        
+
             media = await media_repository.get(media_id)
 
             if not media:
                 return False
-            
+
             deleted_media = await media_repository.delete(media_id)
             return deleted_media is not None
 

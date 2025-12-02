@@ -55,7 +55,7 @@ class Email:
         if not isinstance(other, Email):
             return NotImplemented
         return self.value == other.value
-    
+
     def __str__(self) -> str:
         return self.value
 

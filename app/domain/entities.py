@@ -1,7 +1,6 @@
 import datetime
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from .value_objects import Email, MediaStatus, MediaType, UserRole
 
@@ -46,5 +45,5 @@ class LoginAttempt:
 
 @dataclass
 class CreateMediaAttempt:
-    user_id : uuid.UUID
+    user_id: uuid.UUID
     timestamp: datetime.datetime = field(default_factory=datetime.datetime.now)

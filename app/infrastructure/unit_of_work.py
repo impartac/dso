@@ -20,8 +20,10 @@ class UnitOfWork(UnitOfWorkInterface):
         self._user_repository: Optional[UserRepository] = None
         self._media_repository: Optional[MediaRepository] = None
         self._login_attempts_repository: Optional[LoginAttemptsRepository] = None
-        self._create_media_attemp_repository : Optional[CreateMediaAttemptsRepository] = None
-        
+        self._create_media_attemp_repository: Optional[
+            CreateMediaAttemptsRepository
+        ] = None
+
     async def __aenter__(self):
         self._session = self._session_factory()
         return self
@@ -60,12 +62,16 @@ class UnitOfWork(UnitOfWorkInterface):
                 raise RuntimeError("Session is not initialized. Use context manager.")
             self._login_attempts_repository = LoginAttemptsRepository(self._session)
         return self._login_attempts_repository
-    
-    async def get_create_media_attempt_repository(self) -> CreateMediaAttemptsRepository:
+
+    async def get_create_media_attempt_repository(
+        self,
+    ) -> CreateMediaAttemptsRepository:
         if self._create_media_attemp_repository is None:
             if not self._session:
                 raise RuntimeError("Session is not initialized. Use context manager.")
-            self._create_media_attemp_repository = CreateMediaAttemptsRepository(self._session)
+            self._create_media_attemp_repository = CreateMediaAttemptsRepository(
+                self._session
+            )
         return self._create_media_attemp_repository
 
     async def get_media_repository(self) -> MediaRepository:

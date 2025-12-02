@@ -16,11 +16,11 @@ security = HTTPBearer()
 
 
 class Settings(BaseSettings):
-    
+
     DB_USER: str = ""
     DB_PASSWORD: str = ""
     DB_NAME: str = ""
-    
+
     # JWT настройки (NFR-5)
     SECRET_KEY: str = "your-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     # CORS настройки
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
     ALLOWED_HOSTS: List[str] = ["localhost", "127.0.0.1"]
-    
+
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://user:password@postgres:5432/mediacatalog"
 

@@ -65,9 +65,10 @@ class MediaResponse(JSONEncodable):
     class Config:
         from_attributes = True
 
+
 class MediaDeleteResponse(JSONEncodable):
     id: uuid.UUID
-    success : bool
+    success: bool
 
 
 class UserCreateRequest(BaseModel):
@@ -142,6 +143,6 @@ class RegistrationResponse(BaseModel):
 
 
 class LoginResponse(BaseModel):
-    message : str
-    token_type : str
-    expires_in : int
+    message: str
+    token_type: str
+    expires_in: int

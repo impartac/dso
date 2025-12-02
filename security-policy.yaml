@@ -2,7 +2,7 @@
 # ============================================================================
 # Security Hardening Configuration for Docker Containers
 # ============================================================================
-# This file contains security policies and configurations for Trivy and 
+# This file contains security policies and configurations for Trivy and
 # other scanning tools
 
 version: 1
@@ -22,7 +22,7 @@ scan:
 
   # Явно исключаемые уязвимости (с пояснением)
   skip-update: false
-  
+
   # Типы уязвимостей для сканирования
   severity:
     - LOW
@@ -74,7 +74,7 @@ container-security-requirements:
   resource-limits:
     memory: "512M"
     cpus: "1"
-    
+
 # ============================================================================
 # Критичные базовые образы
 # ============================================================================
@@ -83,19 +83,19 @@ base-image-policy:
     - "docker.io"
     - "ghcr.io"
     - "quay.io"
-  
+
   allowed-base-images:
     - "python:3.11-slim"
     - "python:3.11-alpine"
     - "python:3.10-slim"
     - "python:3.10-alpine"
-  
+
   disallowed-base-images:
     - "ubuntu:latest"
     - "debian:latest"
     - "centos:latest"
     - "alpine:latest"
-  
+
   minimum-requirements:
     - "Specific version tag (no 'latest')"
     - "Non-root user"
@@ -111,7 +111,7 @@ critical-files:
     - ".dockerignore"
     - "docker-compose.yml"
     - "requirements.txt"
-  
+
   must-not-have:
     - ".env"
     - "*.pem"

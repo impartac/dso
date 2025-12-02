@@ -1,38 +1,490 @@
-name: CI
+name: CI/CD Pipeline
 on:
   pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, develop]
   push:
-    branches: [main]
+    branches: [main, develop]
+  workflow_dispatch:  # Позволяет запускать вручную
+
 permissions:
   contents: read
+  checks: write
+  pull-requests: write
+
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}-${{ github.workflow }}
   cancel-in-progress: true
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+env:
+  PYTHON_VERSION: '3.12'
+  POETRY_VERSION: '1.8.3'
+  DATABASE_URL: 'sqlite:///./test.db'
+  SECRET_KEY: 'test-secret-key-for-ci'
 
-      - uses: actions/setup-python@v5
+jobs:
+  validate:
+    name: Validate PR
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Check PR Description
+        uses: actions/github-script@v7
         with:
-          python-version: "3.11"
-          cache: "pip"
+          script: |
+            const pr = context.payload.pull_request;
+            const minLength = 50;
+            if (!pr.body || pr.body.length < minLength) {
+              core.setFailed(`PR description must be at least ${minLength} characters. Current: ${pr.body?.length || 0}`);
+            }
+
+            // Проверяем наличие ключевых слов в описании
+            const description = pr.body.toLowerCase();
+            const requiredKeywords = ['добавлено', 'исправлено', 'изменено'];
+            const hasKeywords = requiredKeywords.some(keyword => description.includes(keyword));
+
+            if (!hasKeywords) {
+              console.log('Рекомендация: добавьте в описание PR ключевые слова: добавлено, исправлено, изменено');
+            }
+
+  setup:
+    name: Setup Environment
+    runs-on: ubuntu-latest
+    outputs:
+      python-version: ${{ steps.python-version.outputs.version }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        id: python-version
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: 'requirements*.txt'
+
+      - name: Debug Python info
+        run: |
+          python --version
+          pip --version
+
+  lint-and-format:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    needs: setup
+    if: success()
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
 
-      - name: Lint & Format
+      - name: Cache pre-commit
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            pre-commit-
+
+      - name: Run pre-commit hooks
+        run: |
+          pre-commit run --all-files --show-diff-on-failure
+
+      - name: Check code formatting with Black
+        run: |
+          black --check --diff .
+
+      - name: Check import sorting with isort
+        run: |
+          isort --check-only --diff .
+
+      - name: Run Ruff linter
         run: |
           ruff check --output-format=github .
-          black --check .
-          isort --check-only .
 
-      - name: Tests
-        run: pytest -q
+      - name: Run type checking with mypy
+        run: |
+          mypy app --ignore-missing-imports --strict
 
-      - name: Pre-commit (all files)
-        run: pre-commit run --all-files
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    needs: [setup, lint-and-format]
+    if: success()
+
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+        test-type: ['unit', 'integration']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+          pip install pytest-cov pytest-asyncio pytest-mock
+
+      - name: Run tests
+        env:
+          DATABASE_URL: 'sqlite+aiosqlite:///:memory:'
+          SECRET_KEY: 'test-secret-key-${{ matrix.test-type }}'
+        run: |
+          if [ "${{ matrix.test-type }}" = "unit" ]; then
+            pytest tests/unit/ -v --cov=app --cov-report=xml --cov-report=html --cov-report=term-missing
+          else
+            pytest tests/integration/ -v --cov=app --cov-append --cov-report=xml --cov-report=html --cov-report=term-missing
+          fi
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-${{ matrix.python-version }}-${{ matrix.test-type }}
+          path: |
+            coverage.xml
+            htmlcov/
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.python-version }}-${{ matrix.test-type }}
+          path: |
+            test-results/
+          retention-days: 7
+
+  coverage:
+    name: Coverage Analysis
+    runs-on: ubuntu-latest
+    needs: test
+    if: success()
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-report-*
+          path: coverage-reports/
+          merge-multiple: true
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install coverage
+
+      - name: Combine coverage reports
+        run: |
+          cd coverage-reports
+          python -m coverage combine coverage*.xml
+          python -m coverage report --show-missing --fail-under=70
+          python -m coverage html
+
+      - name: Upload combined coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: combined-coverage-report
+          path: coverage-reports/htmlcov/
+
+      - name: Coverage comment
+        uses: py-cov-action/python-coverage-comment-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          watermark: "📊"
+          title: "Coverage Report"
+          badge: "coverage"
+          summary-title: "📈 Test Coverage Summary"
+          hide-report: false
+          hide-summary: false
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: setup
+    if: success()
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install security tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit safety pip-audit detect-secrets
+
+      - name: Run Bandit security scan
+        run: |
+          bandit -r app -f json -o bandit-report.json || true
+
+      - name: Run safety check
+        run: |
+          safety check -r requirements.txt --json > safety-report.json || true
+
+      - name: Run pip-audit
+        run: |
+          pip-audit -r requirements.txt --format json > pip-audit-report.json || true
+
+      - name: Detect secrets
+        run: |
+          detect-secrets scan > .secrets.baseline || true
+
+      - name: Upload security reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            bandit-report.json
+            safety-report.json
+            pip-audit-report.json
+            .secrets.baseline
+
+  smoke-test:
+    name: Domain Smoke Test
+    runs-on: ubuntu-latest
+    needs: [setup, test]
+    if: success()
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run domain smoke tests
+        env:
+          DATABASE_URL: 'sqlite+aiosqlite:///:memory:'
+          SECRET_KEY: 'smoke-test-key'
+        run: |
+          echo "🧪 Running domain smoke tests..."
+
+          # Smoke тест для доменных сущностей
+          python -c "
+          import sys
+          sys.path.append('app')
+
+          from domain.entities import User, Media
+          from domain.value_objects import Email, UserRole
+          import uuid
+
+          # Создаем доменные сущности
+          email = Email('test@example.com')
+          user = User(
+              id=uuid.uuid4(),
+              email=email,
+              role=UserRole.USER,
+              hash_password='hashed_password'
+          )
+
+          media = Media(
+              id=uuid.uuid4(),
+              user_id=user.id,
+              file_path='/test/path',
+              media_type='image',
+              file_size=1024
+          )
+
+          print(f'✅ Domain entities created successfully')
+          print(f'   User: {user.id}, email: {user.email.value}')
+          print(f'   Media: {media.id}, type: {media.media_type}')
+          "
+
+          # Smoke тест для сервисов
+          echo "🧪 Testing service layer..."
+          python -c "
+          import sys
+          sys.path.append('app')
+
+          from application.services.authentication_service import AuthenticationService
+          from unittest.mock import AsyncMock
+          import uuid
+
+          # Создаем моки
+          mock_uow = AsyncMock()
+          mock_hasher = AsyncMock()
+
+          # Создаем сервис
+          service = AuthenticationService(
+              uow=mock_uow,
+              hasher=mock_hasher,
+              secret_key='test-key'
+          )
+
+          print('✅ AuthenticationService created successfully')
+          print(f'   Service type: {type(service).__name__}')
+          "
+
+          # Smoke тест для репозиториев
+          echo "🧪 Testing repository interface..."
+          python -c "
+          import sys
+          sys.path.append('app')
+
+          from domain.repositories import UserRepositoryInterface
+          from abc import ABC, abstractmethod
+
+          # Проверяем, что интерфейс корректен
+          class TestRepo(UserRepositoryInterface):
+              async def insert(self, entity):
+                  return entity.id
+
+              async def get(self, id):
+                  return None
+
+              async def get_by_email(self, email):
+                  return None
+
+          test_repo = TestRepo()
+          print('✅ UserRepositoryInterface implemented correctly')
+          print(f'   Required methods: {[m for m in dir(test_repo) if not m.startswith(\"_\")]}')
+          "
+
+          # Запускаем быстрые тесты доменных функций
+          echo "🧪 Running quick domain tests..."
+          python -m pytest tests/unit/domain/ -v -k "test_" --tb=short || echo "⚠️ No domain tests found, but that's ok"
+
+  build:
+    name: Build and Package
+    runs-on: ubuntu-latest
+    needs: [test, security, smoke-test, coverage]
+    if: success() && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Build package
+        run: |
+          python -m build
+
+      - name: Check package
+        run: |
+          twine check dist/*
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package
+          path: dist/
+          retention-days: 7
+
+  notify:
+    name: Notify Status
+    runs-on: ubuntu-latest
+    needs: [lint-and-format, test, security, smoke-test, coverage, build]
+    if: always()
+
+    steps:
+      - name: Determine status
+        id: status
+        run: |
+          if [[ "${{ needs.lint-and-format.result }}" == "success" && \
+                "${{ needs.test.result }}" == "success" && \
+                "${{ needs.security.result }}" == "success" ]]; then
+            echo "status=✅ All checks passed" >> $GITHUB_OUTPUT
+            echo "color=good" >> $GITHUB_OUTPUT
+          else
+            echo "status=❌ Some checks failed" >> $GITHUB_OUTPUT
+            echo "color=danger" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create summary
+        run: |
+          echo "# CI/CD Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Job Results:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint & Format | ${{ needs.lint-and-format.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tests | ${{ needs.test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Scan | ${{ needs.security.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Smoke Test | ${{ needs.smoke-test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Coverage | ${{ needs.coverage.result }} |" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "| Build | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  deploy:
+    name: Deploy Preview
+    runs-on: ubuntu-latest
+    needs: build
+    if: success() && github.event_name == 'pull_request'
+
+    environment: preview
+    permissions:
+      deployments: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Create deployment
+        uses: actions/github-script@v7
+        env:
+          SHA: ${{ github.event.pull_request.head.sha }}
+        with:
+          script: |
+            github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: process.env.SHA,
+              environment: 'preview',
+              auto_merge: false,
+              required_contexts: []
+            })

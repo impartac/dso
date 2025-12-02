@@ -2,10 +2,9 @@ import sys
 import uuid as uuid_lib
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, Mock
 
 import pytest
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.expression import Select
 
@@ -40,7 +39,7 @@ def sample_user_entity():
         role=UserRole.USER,
         hash_password="hashed_password_123",
         created_at=datetime(2023, 1, 1, 12, 0, 0),
-        updated_at=datetime(2023, 1, 1, 12, 0, 0)
+        updated_at=datetime(2023, 1, 1, 12, 0, 0),
     )
 
 
@@ -53,7 +52,7 @@ def sample_user_orm():
         role="USER",
         hash_password="hashed_password_123",
         created_at=datetime(2023, 1, 1, 12, 0, 0),
-        updated_at=datetime(2023, 1, 1, 12, 0, 0)
+        updated_at=datetime(2023, 1, 1, 12, 0, 0),
     )
 
 
@@ -61,7 +60,9 @@ class TestUserRepository:
     """Тесты реализации репозитория пользователей"""
 
     @pytest.mark.asyncio
-    async def test_insert_user_success(self, user_repository, mock_session, sample_user_entity):
+    async def test_insert_user_success(
+        self, user_repository, mock_session, sample_user_entity
+    ):
         """Тест успешного добавления пользователя"""
         # Arrange
         mock_add = mock_session.add
@@ -82,7 +83,12 @@ class TestUserRepository:
         assert added_orm.role == sample_user_entity.role
 
     @pytest.mark.asyncio
-    async def test_get_user_by_id_found(self, user_repository : UserRepositoryInterface, mock_session, sample_user_entity : User):
+    async def test_get_user_by_id_found(
+        self,
+        user_repository: UserRepositoryInterface,
+        mock_session,
+        sample_user_entity: User,
+    ):
         """Тест получения пользователя по ID (пользователь найден)"""
         # Arrange
         user_id = sample_user_entity.id
@@ -125,7 +131,9 @@ class TestUserRepository:
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_get_user_by_email_found(self, user_repository, mock_session, sample_user_entity, sample_user_orm):
+    async def test_get_user_by_email_found(
+        self, user_repository, mock_session, sample_user_entity, sample_user_orm
+    ):
         """Тест получения пользователя по email (пользователь найден)"""
         # Arrange
         email = sample_user_entity.email
@@ -164,7 +172,9 @@ class TestUserRepository:
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_update_user_success(self, user_repository, mock_session, sample_user_entity, sample_user_orm):
+    async def test_update_user_success(
+        self, user_repository, mock_session, sample_user_entity, sample_user_orm
+    ):
         """Тест обновления пользователя"""
         # Arrange
         # Создаем обновленную сущность
@@ -174,7 +184,7 @@ class TestUserRepository:
             role=UserRole.ADMIN,
             hash_password="new_hashed_password",
             created_at=sample_user_entity.created_at,
-            updated_at=datetime.now()
+            updated_at=datetime.now(),
         )
 
         mock_result = Mock()
@@ -195,7 +205,9 @@ class TestUserRepository:
         mock_flush.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_update_user_not_found_raises_error(self, user_repository, mock_session, sample_user_entity):
+    async def test_update_user_not_found_raises_error(
+        self, user_repository, mock_session, sample_user_entity
+    ):
         """Тест обновления несуществующего пользователя (должен вызывать исключение)"""
         # Arrange
         mock_result = Mock()
@@ -209,49 +221,57 @@ class TestUserRepository:
     def test_user_repository_class_structure(self, user_repository):
         """Тест структуры класса UserRepository"""
         from app.infrastructure.repositories import Repository
-        
+
         repo_class = type(user_repository)
-        
+
         # 1. Проверяем имя класса
-        assert repo_class.__name__ == 'UserRepository'
-        
+        assert repo_class.__name__ == "UserRepository"
+
         # 2. Проверяем MRO (Method Resolution Order)
         mro = repo_class.__mro__
-        
+
         # Ищем интерфейс в MRO по имени или по ссылке
         has_interface = False
-        interface_class = None
-        
+
         for cls in mro:
-            if cls.__name__ == 'UserRepositoryInterface':
+            if cls.__name__ == "UserRepositoryInterface":
                 has_interface = True
-                interface_class = cls
                 break
-        
+
         # 3. Если не нашли по имени, проверяем issubclass
         if not has_interface:
             # Пробуем проверить через issubclass
             try:
                 has_interface = issubclass(repo_class, UserRepositoryInterface)
-            except:
+            except Exception:
                 has_interface = False
-        
-        assert has_interface, f"UserRepository должен реализовывать UserRepositoryInterface. MRO: {mro}"
-        
+
+        assert (
+            has_interface
+        ), f"UserRepository должен реализовывать UserRepositoryInterface. MRO: {mro}"
+
         # 4. Проверяем Repository в MRO
         has_repository = Repository in mro or any(
-            cls.__name__ == 'Repository' for cls in mro
+            cls.__name__ == "Repository" for cls in mro
         )
-        assert has_repository, f"UserRepository должен наследоваться от Repository. MRO: {mro}"
-        
+        assert (
+            has_repository
+        ), f"UserRepository должен наследоваться от Repository. MRO: {mro}"
+
         # 5. Проверяем наличие всех методов интерфейса
-        required_methods = ['insert', 'get', 'get_by_email']
+        required_methods = ["insert", "get", "get_by_email"]
         for method_name in required_methods:
-            assert hasattr(user_repository, method_name), f"Отсутствует метод {method_name}"
-            assert callable(getattr(user_repository, method_name)), f"Метод {method_name} не вызываемый"
+            assert hasattr(
+                user_repository, method_name
+            ), f"Отсутствует метод {method_name}"
+            assert callable(
+                getattr(user_repository, method_name)
+            ), f"Метод {method_name} не вызываемый"
 
     @pytest.mark.asyncio
-    async def test_insert_returns_none_as_expected(self, user_repository, mock_session, sample_user_entity):
+    async def test_insert_returns_none_as_expected(
+        self, user_repository, mock_session, sample_user_entity
+    ):
         """Тест, что insert возвращает None (согласно интерфейсу)"""
         # Act
         result = await user_repository.insert(sample_user_entity)
@@ -268,15 +288,16 @@ class TestRepositoryErrorHandling:
         """Тест обработки ошибки БД при получении пользователя"""
         # Arrange
         user_id = uuid_lib.uuid4()
-        mock_session.execute.side_effect = Exception(
-            "Database connection error")
+        mock_session.execute.side_effect = Exception("Database connection error")
 
         # Act & Assert
         with pytest.raises(Exception, match="Database connection error"):
             await user_repository.get(user_id)
 
     @pytest.mark.asyncio
-    async def test_insert_handles_database_error(self, user_repository, mock_session, sample_user_entity):
+    async def test_insert_handles_database_error(
+        self, user_repository, mock_session, sample_user_entity
+    ):
         """Тест обработки ошибки БД при добавлении пользователя"""
         # Arrange
         mock_session.add.side_effect = Exception("Constraint violation")
@@ -296,15 +317,19 @@ class TestTypeHintsAndSignatures:
         # Получаем методы интерфейса
         interface_methods = {
             name: method
-            for name, method in inspect.getmembers(UserRepositoryInterface, predicate=inspect.ismethod)
-            if not name.startswith('_')
+            for name, method in inspect.getmembers(
+                UserRepositoryInterface, predicate=inspect.ismethod
+            )
+            if not name.startswith("_")
         }
 
         # Получаем методы реализации
         repo_methods = {
             name: method
-            for name, method in inspect.getmembers(UserRepository, predicate=inspect.isfunction)
-            if not name.startswith('_') and name in interface_methods
+            for name, method in inspect.getmembers(
+                UserRepository, predicate=inspect.isfunction
+            )
+            if not name.startswith("_") and name in interface_methods
         }
 
         # Проверяем, что все абстрактные методы реализованы

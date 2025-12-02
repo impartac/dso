@@ -1,13 +1,12 @@
 import datetime
-import hashlib
 import uuid
-from typing import List, Optional
+from typing import List
 
 from domain.entities import CreateMediaAttempt, LoginAttempt, Media, User
 from domain.value_objects import Email, MediaStatus, MediaType, UserRole
-from sqlalchemy import Boolean, DateTime
+from sqlalchemy import DateTime
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy import ForeignKey, Index, String, Text
+from sqlalchemy import ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -49,7 +48,6 @@ class UserORM(Base):
     )
 
 
-
 class MediaORM(Base):
     """ORM модель для медиа контента"""
 
@@ -89,7 +87,7 @@ class LoginAttemptORM(Base):
     """ORM модель для попыток входа (NFR-1, NFR-5)"""
 
     __tablename__ = "login_attempts"
-    
+
     id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
@@ -100,16 +98,19 @@ class LoginAttemptORM(Base):
         DateTime(timezone=True), default=datetime.datetime.now, nullable=False
     )
 
+
 class CreateMediaAttemptORM(Base):
     """ORM модель для попыток входа (NFR-1, NFR-5)"""
 
     __tablename__ = "create_media_attempts"
-    
+
     id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
 
-    user_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), default=uuid.uuid4, nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), default=uuid.uuid4, nullable=False
+    )
 
     timestamp: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.datetime.now, nullable=False
@@ -183,6 +184,7 @@ def login_attempt_from_entity(attempt: LoginAttempt) -> LoginAttemptORM:
         timestamp=attempt.timestamp,
     )
 
+
 def create_media_attempt_to_entity(orm: CreateMediaAttemptORM) -> CreateMediaAttempt:
 
     return CreateMediaAttempt(
@@ -191,7 +193,9 @@ def create_media_attempt_to_entity(orm: CreateMediaAttemptORM) -> CreateMediaAtt
     )
 
 
-def create_media_attempt_from_entity(attempt: CreateMediaAttempt) -> CreateMediaAttemptORM:
+def create_media_attempt_from_entity(
+    attempt: CreateMediaAttempt,
+) -> CreateMediaAttemptORM:
 
     return CreateMediaAttemptORM(
         user_id=attempt.user_id,

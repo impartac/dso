@@ -1,13 +1,8 @@
-import asyncio
-import os
-
-# Добавляем корневую директорию проекта в sys.path
 import sys
-from datetime import timedelta
 from pathlib import Path
-from typing import AsyncGenerator, Generator
+from typing import AsyncGenerator
 from unittest.mock import AsyncMock, Mock
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 import pytest_asyncio
@@ -18,12 +13,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 ROOT = Path(__file__).resolve().parents[1]  # корень репозитория
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-    sys.path.append('app')
+    sys.path.append("app")
+
 
 from app.application.services.authentication_service import AuthenticationService
 from app.application.services.authorization_service import AuthorizationService
 from app.application.services.media_service import MediaCRUDService
-from app.application.services.security_monitoring_service import SecurityMonitoringService
+from app.application.services.security_monitoring_service import (
+    SecurityMonitoringService,
+)
 from app.application.unit_of_wrok_interface import UnitOfWorkInterface
 from app.domain.entities import User
 from app.domain.value_objects import Email, SecurityPolicy, UserRole
@@ -42,17 +40,17 @@ async def test_engine():
     # Используем тестовую базу данных (например, SQLite в памяти)
     test_db_url = "sqlite+aiosqlite:///:memory:"
     engine = create_async_engine(test_db_url, echo=False)
-    
+
     # Создаем таблицы
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
+
     yield engine
-    
+
     # Очистка
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
-    
+
     await engine.dispose()
 
 
@@ -60,11 +58,9 @@ async def test_engine():
 @pytest_asyncio.fixture
 async def test_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
     async_session = async_sessionmaker(
-        test_engine, 
-        class_=AsyncSession, 
-        expire_on_commit=False
+        test_engine, class_=AsyncSession, expire_on_commit=False
     )
-    
+
     async with async_session() as session:
         yield session
 
@@ -77,35 +73,31 @@ def mock_uow() -> UnitOfWorkInterface:
     mock.__aexit__ = AsyncMock(return_value=None)
     mock.commit = AsyncMock()
     mock.rollback = AsyncMock()
-    
+
     # Моки для репозиториев
     mock.users = Mock()
     mock.users.get_by_email = AsyncMock()
     mock.users.add = AsyncMock()
     mock.users.get = AsyncMock()
-    
+
     mock.media = Mock()
     mock.media.get_all = AsyncMock()
     mock.media.get = AsyncMock()
     mock.media.add = AsyncMock()
     mock.media.update = AsyncMock()
     mock.media.delete = AsyncMock()
-    
+
     mock.security_logs = Mock()
     mock.security_logs.add = AsyncMock()
     mock.security_logs.get_ips_with_excessive_attempts = AsyncMock()
-    
+
     return mock
 
 
 # Фикстура для test_session_maker
 @pytest.fixture
 def test_session_maker(test_engine) -> async_sessionmaker[AsyncSession]:
-    return async_sessionmaker(
-        test_engine,
-        class_=AsyncSession,
-        expire_on_commit=False
-    )
+    return async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
 
 
 # Фикстура для реального UnitOfWork
@@ -163,7 +155,7 @@ async def test_user() -> User:
         id=uuid4(),
         email=Email("test@example.com"),
         role=UserRole.USER,
-        hash_password=await Hasher().get_hash("password123")
+        hash_password=await Hasher().get_hash("password123"),
     )
 
 
@@ -174,7 +166,7 @@ async def test_admin() -> User:
         id=uuid4(),
         email=Email("admin@example.com"),
         role=UserRole.ADMIN,
-        hash_password= (await Hasher().get_hash("admin123"))
+        hash_password=(await Hasher().get_hash("admin123")),
     )
 
 
@@ -194,7 +186,7 @@ def mock_request():
             self.headers = {}
             self.client = Mock()
             self.client.host = client_host
-            
+
     return MockRequest
 
 
@@ -203,9 +195,7 @@ def mock_request():
 def authorized_request(mock_request, auth_service_mock, test_user):
     request = mock_request()
     # Настраиваем мок для создания токена
-    token = auth_service_mock.create_access_token(
-        data={"sub": str(test_user.email)}
-    )
+    token = auth_service_mock.create_access_token(data={"sub": str(test_user.email)})
     request.cookies["access_token"] = token
     return request
 
@@ -214,18 +204,17 @@ def authorized_request(mock_request, auth_service_mock, test_user):
 @pytest.fixture
 def test_app():
     # Используем существующее приложение с переопределенными зависимостями
-    from app.presentation.dependencies import get_authentication_service, get_uow
 
     # Создаем моки для тестового приложения
     test_app = FastAPI()
-    
+
     # Импортируем и подключаем роутеры
     from app.presentation.login_router import login_router
     from app.presentation.media_router import media_router
-    
+
     test_app.include_router(login_router)
     test_app.include_router(media_router)
-    
+
     return test_app
 
 
@@ -240,12 +229,12 @@ async def test_data_setup(test_session):
     user = User(
         email=Email("test@example.com"),
         role=UserRole.USER,
-        hash_password=await Hasher().get_hash("testpassword")
+        hash_password=await Hasher().get_hash("testpassword"),
     )
-    
+
     test_session.add(user)
     await test_session.commit()
-    
+
     return {"user": user}
 
 
@@ -256,7 +245,7 @@ def pii_test_data():
         "email": "john.doe@example.com",
         "credit_card": "1234567812345678",
         "ssn": "123-45-6789",
-        "normal_text": "Hello world"
+        "normal_text": "Hello world",
     }
 
 
@@ -272,10 +261,11 @@ def temp_media_dir(tmp_path):
 @pytest.fixture
 def test_settings():
     """Фикстура для тестовых настроек"""
+
     class TestSettings:
         SECRET_KEY = "test-secret-key-for-testing-only"
         ALGORITHM = "HS256"
         ACCESS_TOKEN_EXPIRE_MINUTES = 30
         DATABASE_URL = "sqlite+aiosqlite:///:memory:"
-    
+
     return TestSettings()

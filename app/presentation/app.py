@@ -1,20 +1,13 @@
-import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime
 
-from fastapi import FastAPI, HTTPException, Request, status
-from fastapi.encoders import jsonable_encoder
-from fastapi.exceptions import RequestValidationError
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import JSONResponse
 from infrastructure.config import logger, settings
 
-from .dependencies import mask_pii
 from .login_router import login_router
 from .media_router import media_router
-from .models import ErrorResponse
 
 
 @asynccontextmanager

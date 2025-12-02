@@ -20,7 +20,6 @@ from .orm import (
     UserORM,
     create_media_attempt_from_entity,
     login_attempt_from_entity,
-    login_attempt_to_entity,
     media_from_entity,
     media_to_entity,
     user_from_entity,
@@ -159,7 +158,9 @@ class LoginAttemptsRepository(Repository, LoginAttemptsRepositoryInterface):
         await self._session.flush()
 
     async def get_ips_with_excessive_attempts(
-        self, threshold: int, time_delta: datetime.timedelta,
+        self,
+        threshold: int,
+        time_delta: datetime.timedelta,
     ) -> List[str]:
         time_threshold = datetime.datetime.now() - time_delta
 
@@ -187,6 +188,7 @@ class LoginAttemptsRepository(Repository, LoginAttemptsRepositoryInterface):
         await self._session.execute(stmt)
         await self._session.flush()
 
+
 class CreateMediaAttemptsRepository(Repository, CreateMediaAttemptsRepositoryInterface):
     async def insert(self, entity: CreateMediaAttempt) -> None:
         orm = create_media_attempt_from_entity(entity)
@@ -212,12 +214,14 @@ class CreateMediaAttemptsRepository(Repository, CreateMediaAttemptsRepositoryInt
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
-    async def cleanup_old_attempts(self, older_than_mins : int) -> None:
+    async def cleanup_old_attempts(self, older_than_mins: int) -> None:
         time_threshold = datetime.datetime.now() - datetime.timedelta(
             minutes=older_than_mins
         )
 
-        stmt = delete(CreateMediaAttemptORM).where(CreateMediaAttemptORM.timestamp < time_threshold)
+        stmt = delete(CreateMediaAttemptORM).where(
+            CreateMediaAttemptORM.timestamp < time_threshold
+        )
 
         await self._session.execute(stmt)
         await self._session.flush()

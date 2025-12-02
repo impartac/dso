@@ -31,10 +31,7 @@ Badge добавится автоматически после загрузки 
 
 ## Контейнеры
 ```bash
-docker build -t secdev-app .
-docker run --rm -p 8000:8000 secdev-app
-# или
-docker compose up --build
+docker compose up -d app
 ```
 
 ## Эндпойнты

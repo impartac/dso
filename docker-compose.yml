@@ -1,0 +1,151 @@
+services:
+  # ============================================================================
+  # PostgreSQL Database Service
+  # ============================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: app-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5656:5432"
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - prod
+      - dev
+
+  # ============================================================================
+  # Main Application Service
+  # ============================================================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: app-main
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PYTHONUNBUFFERED: "1"
+      DEBUG: "${DEBUG:-false}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+      DATABASE_URL: "${DATABASE_URL}"
+      SECRET_KEY: "${SECRET_KEY:-change-me-in-production}"
+    ports:
+      - "8000:8000"
+    networks:
+      - app-network
+
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 10s
+
+    profiles:
+      - prod
+      - dev
+
+  # ============================================================================
+  # Development Service (only for local development)
+  # ============================================================================
+  app-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: app-dev
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+    environment:
+      PYTHONUNBUFFERED: "1"
+      DEBUG: "true"
+      LOG_LEVEL: "debug"
+      DATABASE_URL: "${DATABASE_URL}"
+    ports:
+      - "8000:8000"
+
+    volumes:
+      # Mount source code for hot reload
+      - ./app:/app/app
+      - ./tests:/app/tests
+
+    networks:
+      - app-network
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    profiles:
+      - dev
+
+  # ============================================================================
+  # Linting and Code Quality Service
+  # ============================================================================
+  lint:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: app-lint
+    command: bash -c "flake8 app tests && black --check app tests && isort --check-only app tests"
+
+    volumes:
+      - ./app:/app/app:ro
+      - ./tests:/app/tests:ro
+
+    profiles:
+      - dev
+      - ci
+
+  # ============================================================================
+  # Testing Service
+  # ============================================================================
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: app-test
+    command: pytest -v --cov=app --cov-report=html tests/
+
+    environment:
+      DATABASE_URL: "postgresql://${DB_USER:-appuser}:${DB_PASSWORD:-secure_password_123}@postgres:5432/${DB_NAME:-appdb}_test"
+
+    volumes:
+      - ./app:/app/app:ro
+      - ./tests:/app/tests:ro
+      - ./coverage:/app/coverage
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    profiles:
+      - dev
+      - ci
+
+# ============================================================================
+# Networks
+# ============================================================================
+networks:
+  app-network:
+
+# ============================================================================
+# Volumes
+# ============================================================================
+volumes:
+  postgres_data:

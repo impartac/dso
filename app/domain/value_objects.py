@@ -15,6 +15,7 @@ class SecurityPolicy:
     # Rate Limiting (NFR-2)
     media_creation_limit: int = 10
     media_creation_window: timedelta = timedelta(minutes=1)
+    user_block_duration: timedelta = timedelta(minutes=1)
 
     # Сессии (NFR-21)
     session_timeout: timedelta = timedelta(minutes=30)
@@ -29,11 +30,6 @@ class SecurityPolicy:
         "audio/mpeg",
         "application/pdf",
     )
-
-    @classmethod
-    def default(cls) -> "SecurityPolicy":
-        """Политика по умолчанию (базовые NFR)"""
-        return cls()
 
     def validate(self) -> None:
         """Валидация политики"""
@@ -55,13 +51,18 @@ class Email:
         domain_parts = domain.split(".")
         return f"{local[0]}***@{domain_parts[0][0]}***.{domain_parts[-1]}"
 
+    def __eq__(self, other):
+        if not isinstance(other, Email):
+            return NotImplemented
+        return self.value == other.value
+
     def __str__(self) -> str:
         return self.value
 
 
 class UserRole(Enum):
-    ADMIN = "admin"
-    USER = "user"
+    ADMIN = "ADMIN"
+    USER = "USER"
 
 
 class MediaType(Enum):

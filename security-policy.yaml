@@ -1,0 +1,122 @@
+#!/bin/bash
+# ============================================================================
+# Security Hardening Configuration for Docker Containers
+# ============================================================================
+# This file contains security policies and configurations for Trivy and
+# other scanning tools
+
+version: 1
+
+# ============================================================================
+# Trivy Configuration
+# ============================================================================
+# File: .trivy/trivy.yaml
+
+scan:
+  # Типы сканирования
+  scanners:
+    - vuln        # Уязвимости
+    - config      # Конфигурация
+    - secret      # Секреты
+    - license     # Лицензии
+
+  # Явно исключаемые уязвимости (с пояснением)
+  skip-update: false
+
+  # Типы уязвимостей для сканирования
+  severity:
+    - LOW
+    - MEDIUM
+    - HIGH
+    - CRITICAL
+
+  # Список исключений
+  skip-database-update: false
+
+# ============================================================================
+# Исключения для Trivy (trivy-skips.json)
+# ============================================================================
+vulnerability-skips:
+  - |
+    {
+      "ID": "CVE-2023-XXXXX",
+      "Reason": "False positive - не применимо к приложению",
+      "Expiration": "2025-12-31",
+      "Comment": "Уязвимость в glibc, которая не влияет на приложение Python"
+    }
+
+# ============================================================================
+# Политики безопасности для Hadolint
+# ============================================================================
+hadolint-config: |
+  {
+    "extends": "default",
+    "ignore": [
+      "DL3008",  # Pin versions in apt get install
+      "DL3009"   # Delete apt-get lists after install
+    ],
+    "failure-threshold": "warning"
+  }
+
+# ============================================================================
+# Требования безопасности контейнера
+# ============================================================================
+container-security-requirements:
+  user: "non-root"
+  healthcheck: "required"
+  read-only-filesystem: "recommended"
+  drop-capabilities:
+    - ALL
+  add-capabilities:
+    - NET_BIND_SERVICE
+  security-options:
+    - "no-new-privileges:true"
+  resource-limits:
+    memory: "512M"
+    cpus: "1"
+
+# ============================================================================
+# Критичные базовые образы
+# ============================================================================
+base-image-policy:
+  allowed-registries:
+    - "docker.io"
+    - "ghcr.io"
+    - "quay.io"
+
+  allowed-base-images:
+    - "python:3.11-slim"
+    - "python:3.11-alpine"
+    - "python:3.10-slim"
+    - "python:3.10-alpine"
+
+  disallowed-base-images:
+    - "ubuntu:latest"
+    - "debian:latest"
+    - "centos:latest"
+    - "alpine:latest"
+
+  minimum-requirements:
+    - "Specific version tag (no 'latest')"
+    - "Non-root user"
+    - "HEALTHCHECK defined"
+    - "Read-only root filesystem support"
+
+# ============================================================================
+# Критичные файлы для проверки
+# ============================================================================
+critical-files:
+  must-have:
+    - "Dockerfile"
+    - ".dockerignore"
+    - "docker-compose.yml"
+    - "requirements.txt"
+
+  must-not-have:
+    - ".env"
+    - "*.pem"
+    - "*.key"
+    - "*.crt"
+    - "*secret*"
+    - "*password*"
+    - "*.sql"

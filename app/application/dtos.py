@@ -1,11 +1,9 @@
 import datetime
-import uuid
-from dataclasses import dataclass
+
+from pydantic import BaseModel
 
 
-@dataclass
-class LoginAttemptDTO:
+class LoginAttemptDTO(BaseModel):
     ip_address: str
-    user_id: uuid.UUID
-    successful: bool
     timestamp: datetime.datetime
+    successful: bool

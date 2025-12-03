@@ -1,0 +1,27 @@
+# Конфигурация Grype для исключения ложных срабатываний
+ignore:
+  # Исключение по ID уязвимости
+  - vulnerability: CVE-2014-123456
+    reason: "Ложное срабатывание в тестовом окружении"
+
+  # Исключение по пакету
+  - package:
+      name: "example-package"
+      version: "1.0.0"
+    reason: "Внутренний пакет, не подверженный уязвимости"
+
+  # Исключение по severity
+  - vulnerability: "*"
+    package:
+      namespace: "github:python"
+    reason: "Низкая severity, запланировано на следующий релиз"
+    severity: "low"
+
+# Настройки проверки
+check-for-app-update: false
+output: "json"
+scope: "Squashed"
+only-fixed: false
+db:
+  cache-dir: "/tmp/grype-db"
+  update-url: "https://toolbox-data.anchore.io/grype/databases/listing.json"

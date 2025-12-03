@@ -212,17 +212,6 @@ jobs:
           name: combined-coverage-report
           path: coverage-reports/htmlcov/
 
-      - name: Coverage comment
-        uses: py-cov-action/python-coverage-comment-action@v2
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          watermark: "📊"
-          title: "Coverage Report"
-          badge: "coverage"
-          summary-title: "📈 Test Coverage Summary"
-          hide-report: false
-          hide-summary: false
-
   security:
     name: Security Scan
     runs-on: ubuntu-latest

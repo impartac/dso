@@ -1,16 +1,8 @@
-import logging
 from typing import List
 
 from fastapi.security import HTTPBearer
 from pydantic_settings import BaseSettings
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("app.log"), logging.StreamHandler()],
-)
-logger = logging.getLogger(__name__)
 
 security = HTTPBearer()
 

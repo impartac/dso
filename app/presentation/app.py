@@ -1,13 +1,16 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from infrastructure.config import logger, settings
+from infrastructure.config import settings
 
 from .login_router import login_router
 from .media_router import media_router
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager

@@ -1,0 +1,37 @@
+# Конфигурация Evidence Pipeline
+evidence:
+  version: "1.0"
+  practice: "P09"
+  artifacts:
+    sbom:
+      required: true
+      formats: ["spdx-json", "cyclonedx-json"]
+      symlinks: true
+      retention_days: 90
+
+    sca:
+      required: true
+      tools: ["grype", "trivy"]
+      outputs: ["json", "md-summary"]
+      severity_threshold: "medium"
+
+  traceability:
+    include_commit: true
+    include_pr: true
+    include_workflow: true
+    manifest_format: "json"
+
+  reporting:
+    ds_template: "EVIDENCE/templates/ds-report-template.md"
+    auto_generate: true
+    include_stats: true
+
+  storage:
+    directory: "EVIDENCE/P09"
+    pattern: "{artifact}-{commit}.{ext}"
+    symlink_pattern: "{artifact}.{ext}"
+
+  notifications:
+    pr_comments: true
+    status_checks: true
+    artifact_links: true

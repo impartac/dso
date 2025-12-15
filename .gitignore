@@ -31,3 +31,5 @@ grype.db*
 !EVIDENCE/P09/README.md
 !EVIDENCE/P09/.gitkeep
 !EVIDENCE/README.md
+
+.secrets

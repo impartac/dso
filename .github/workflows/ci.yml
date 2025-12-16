@@ -271,12 +271,12 @@ jobs:
       - name: Run security scans with docker-compose
         run: |
           # Собираем образ
-          docker compose -f ../docker-compose.yml build app
+          docker compose -f docker-compose.yml build app
 
           # Запускаем сканирование
-          docker compose -f ../docker-compose.yml run --rm trivy-image
-          docker compose -f ../docker-compose.yml run --rm trivy-config
-          docker compose -f ../docker-compose.yml run --rm hadolint-scan
+          docker compose -f docker-compose.yml run --rm trivy-image
+          docker compose -f docker-compose.yml run --rm trivy-config
+          docker compose -f docker-compose.yml run --rm hadolint-scan
 
           # Копируем отчеты
           cp -r trivy-reports/ .

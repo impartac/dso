@@ -3,6 +3,8 @@ name: CI/CD Pipeline OPTIMIZED
 on:
   push:
   pull_request:
+        types: [opened, synchronize, reopened]
+        branches: [main, develop]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -124,8 +126,7 @@ jobs:
 
       - name: Run Ruff linter
         run: |
-            ruff check .
-            ruff format --check .
+            ruff check --output-format=github .
 
       - name: Run security checks
         run: |

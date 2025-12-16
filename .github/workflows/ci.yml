@@ -243,23 +243,36 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Debug directory
+      - name: Debug - Show all files
         run: |
           echo "=== Current directory ==="
           pwd
-          echo -e "\n=== Files in root ==="
+          echo -e "\n=== All files recursively (first 50) ==="
+          find . -type f | head -50
+          echo -e "\n=== Top-level files ==="
           ls -la
-          echo -e "\n=== Looking for docker-compose files ==="
-          find . -name "*.yml" -o -name "*.yaml" | grep -i compose || echo "No compose files found"
+          echo -e "\n=== Is docker-compose.yml in git? ==="
+          git ls-files docker-compose.yml || echo "File not in git"
+          echo -e "\n=== Check docker-compose.yml specifically ==="
+          if [ -f "docker-compose.yml" ]; then
+            echo "docker-compose.yml exists!"
+            echo "File size: $(wc -l < docker-compose.yml) lines"
+          else
+            echo "docker-compose.yml NOT FOUND!"
+            # Проверим все yml файлы
+            echo "All yml files:"
+            find . -name "*.yml" -o -name "*.yaml" 2>/dev/null
+          fi
+
       - name: Run security scans with docker-compose
         run: |
           # Собираем образ
-          docker compose -f ./docker-compose.yml build app
+          docker compose -f ../docker-compose.yml build app
 
           # Запускаем сканирование
-          docker compose -f ./docker-compose.yml run --rm trivy-image
-          docker compose -f ./docker-compose.yml run --rm trivy-config
-          docker compose -f ./docker-compose.yml run --rm hadolint-scan
+          docker compose -f ../docker-compose.yml run --rm trivy-image
+          docker compose -f ../docker-compose.yml run --rm trivy-config
+          docker compose -f ../docker-compose.yml run --rm hadolint-scan
 
           # Копируем отчеты
           cp -r trivy-reports/ .

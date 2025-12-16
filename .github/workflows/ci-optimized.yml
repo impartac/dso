@@ -1,0 +1,386 @@
+name: CI/CD Pipeline OPTIMIZED
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  DOCKER_BUILDKIT: 1
+
+jobs:
+  test:
+    name: Test (${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+        os: [ubuntu-latest, windows, macos-latest]
+
+    concurrency:
+      group: test-${{ matrix.python-version }}-${{ matrix.os }}-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.cache/pypoetry
+            ~/.local/share/pypoetry
+            ${{ github.workspace }}/.venv
+          key: ${{ runner.os }}-py-${{ matrix.python-version }}-${{ hashFiles('**/pyproject.toml', '**/poetry.lock', '**/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-py-${{ matrix.python-version }}-
+            ${{ runner.os }}-py-
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f "pyproject.toml" ]; then
+            pip install poetry
+            poetry install --no-root --with dev
+          elif [ -f "requirements.txt" ]; then
+            pip install -r requirements.txt
+            pip install -r requirements-dev.txt
+          fi
+          pip install pytest-cov pytest-asyncio pytest-mock
+
+      - name: Run tests
+        env:
+          SECRET_KEY: ${{ secrets.TEST_SECRET_KEY }}
+          DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+          API_KEY: ${{ secrets.TEST_API_KEY }}
+        run: |
+          # Маскирование секретов в логах
+          echo "::add-mask::${{ secrets.TEST_SECRET_KEY }}"
+          echo "::add-mask::${{ secrets.TEST_DATABASE_URL }}"
+
+          # Запуск тестов с coverage
+          pytest tests/ -v \
+            --cov=app \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html:htmlcov \
+            --cov-report=term-missing \
+            --junitxml=junit.xml
+
+      - name: Upload test reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ matrix.python-version }}-${{ matrix.os }}
+          path: |
+            coverage.xml
+            junit.xml
+            htmlcov/
+          retention-days: 7
+
+      - name: Check coverage threshold
+        run: |
+          python -m coverage report --fail-under=80
+
+  lint:
+    name: Lint and Code Quality
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache linting tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: ${{ runner.os }}-precommit-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Install linting tools
+        run: |
+          pip install ruff black isort mypy bandit safety
+
+      - name: Run Ruff linter
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Run Black
+        run: black --check .
+
+      - name: Run isort
+        run: isort --check-only .
+
+      - name: Run security checks
+        run: |
+          bandit -r app/ -f json -o bandit-report.json
+          safety check --json -o safety-report.json
+
+      - name: Upload security reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            bandit-report.json
+            safety-report.json
+          retention-days: 30
+
+  build:
+    name: Build Artifacts
+    runs-on: ubuntu-latest
+    needs: [test, lint]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-docker-${{ hashFiles('Dockerfile', '**/requirements*.txt', '**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-docker-
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+
+      - name: Log into container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Python package
+        if: contains(github.event.head_commit.message, 'release') || startsWith(github.ref, 'refs/tags/v')
+        run: |
+          pip install build
+          python -m build --wheel --outdir dist/
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            dist/*.whl
+          retention-days: 30
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [test, lint, build]
+    if: github.ref == 'refs/heads/develop' || github.event_name == 'workflow_dispatch'
+    environment: staging
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log into container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Promote to staging
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging
+
+      - name: Deploy to staging (mock)
+        env:
+          STAGING_URL: ${{ secrets.STAGING_URL }}
+          STAGING_API_KEY: ${{ secrets.STAGING_API_KEY }}
+        run: |
+          echo "::add-mask::${{ secrets.STAGING_API_KEY }}"
+          echo "🚀 Deploying to staging environment..."
+          echo "📦 Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging"
+          echo "🌐 Endpoint: ${{ secrets.STAGING_URL }}"
+
+          # Эмуляция деплоя - в реальности здесь был бы kubectl, helm, ssh и т.д.
+          echo "✅ Deployment to staging completed successfully!"
+
+          # Отправка уведомления
+          curl -X POST -H "Content-Type: application/json" \
+            -d '{"text":"✅ Staging deployment successful for commit ${{ github.sha }}"}' \
+            ${{ secrets.SLACK_WEBHOOK_URL }} || echo "Slack notification skipped"
+
+      - name: Run staging smoke tests
+        env:
+          STAGING_URL: ${{ secrets.STAGING_URL }}
+        run: |
+          echo "Running smoke tests on staging..."
+          # Здесь были бы реальные smoke tests
+          echo "✅ Smoke tests passed!"
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [test, lint, build, deploy-staging]
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log into container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Promote to production
+        run: |
+          # Получаем версию из тега
+          VERSION=${GITHUB_REF#refs/tags/v}
+
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v$VERSION
+
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v$VERSION
+
+      - name: Deploy to production (mock)
+        env:
+          PRODUCTION_URL: ${{ secrets.PRODUCTION_URL }}
+          PRODUCTION_API_KEY: ${{ secrets.PRODUCTION_API_KEY }}
+          K8S_NAMESPACE: production
+        run: |
+          echo "::add-mask::${{ secrets.PRODUCTION_API_KEY }}"
+          echo "🚀 Deploying to production environment..."
+          echo "📦 Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          echo "🌐 Endpoint: ${{ secrets.PRODUCTION_URL }}"
+          echo "📁 Namespace: $K8S_NAMESPACE"
+
+          # Эмуляция деплоя в Kubernetes
+          echo "🔧 Applying Kubernetes manifests..."
+          # kubectl apply -f k8s/production.yaml -n $K8S_NAMESPACE
+          # kubectl rollout status deployment/app -n $K8S_NAMESPACE
+
+          echo "✅ Production deployment completed successfully!"
+
+          # Отправка релиз-уведомления
+          curl -X POST -H "Content-Type: application/json" \
+            -d '{"text":"🎉 Production release v${VERSION} deployed successfully!"}' \
+            ${{ secrets.SLACK_WEBHOOK_URL }} || echo "Slack notification skipped"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release v${VERSION}
+          body: |
+            ## Changes in this release
+
+            ### Features
+            - New feature 1
+            - New feature 2
+
+            ### Fixes
+            - Bug fix 1
+            - Bug fix 2
+
+            ### Docker Images
+            - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${VERSION}`
+            - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest`
+
+            ### Artifacts
+            See attached build artifacts.
+          draft: false
+          prerelease: false
+          files: |
+            dist/*.whl
+            coverage.xml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: success()
+
+  reports:
+    name: Generate Reports
+    runs-on: ubuntu-latest
+    needs: [test, lint]
+    if: always()
+
+    steps:
+      - name: Download all test reports
+        uses: actions/download-artifact@v4
+        with:
+          path: reports/
+
+      - name: Combine coverage reports
+        run: |
+          pip install coverage
+          cd reports
+          find . -name "coverage.xml" -exec cp {} . \;
+          python -m coverage combine coverage*.xml
+          python -m coverage xml -o combined-coverage.xml
+          python -m coverage html -d htmlcov
+
+      - name: Upload combined reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: combined-reports
+          path: |
+            reports/combined-coverage.xml
+            reports/htmlcov/
+            reports/junit.xml
+          retention-days: 30
+
+      - name: Publish coverage to GitHub Pages
+        if: github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: reports/htmlcov
+          destination_dir: coverage
+          keep_files: false

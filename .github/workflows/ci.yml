@@ -4,7 +4,6 @@ on:
     types: [opened, synchronize, reopened]
     branches: [main, develop]
   push:
-    branches: [main, develop]
   workflow_dispatch:  # Позволяет запускать вручную
 
 permissions:

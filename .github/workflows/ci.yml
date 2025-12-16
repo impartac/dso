@@ -241,7 +241,17 @@ jobs:
   container-security:
     name: Container security
     runs-on: ubuntu-latest
+
     steps:
+      - name: Debug directory
+        run: |
+          echo "=== Current directory ==="
+          pwd
+          echo -e "\n=== Files in root ==="
+          ls -la
+          echo -e "\n=== Looking for docker-compose files ==="
+          find . -name "*.yml" -o -name "*.yaml" | grep -i compose || echo "No compose files found"
+
       - name: Check for docker-compose files
         run: |
           echo "=== Current directory ==="

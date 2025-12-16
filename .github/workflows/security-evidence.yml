@@ -1,257 +1,257 @@
-name: Security Evidence Collection
+# name: Security Evidence Collection
 
-on:
-  push:
-    branches: [ main, master ]
-    tags: [ 'v*' ]
-  pull_request:
-    branches: [ main, master ]
-    types: [ opened, synchronize, reopened ]
-  workflow_dispatch:
-    inputs:
-      evidence_type:
-        description: 'Evidence type to collect'
-        required: true
-        default: 'all'
-        type: choice
-        options:
-          - all
-          - sbom-only
-          - sca-only
-          - ds-report
+# on:
+#   push:
+#     branches: [ main, master ]
+#     tags: [ 'v*' ]
+#   pull_request:
+#     branches: [ main, master ]
+#     types: [ opened, synchronize, reopened ]
+#   workflow_dispatch:
+#     inputs:
+#       evidence_type:
+#         description: 'Evidence type to collect'
+#         required: true
+#         default: 'all'
+#         type: choice
+#         options:
+#           - all
+#           - sbom-only
+#           - sca-only
+#           - ds-report
 
-jobs:
-  evidence-collection:
-    runs-on: ubuntu-latest
-    name: "Evidence: ${{ github.event_name }} @ ${{ github.sha }}"
-    outputs:
-      evidence_url: ${{ steps.upload.outputs.evidence-url }}
-      sbom_url: ${{ steps.upload.outputs.sbom-url }}
-      sca_url: ${{ steps.upload.outputs.sca-url }}
+# jobs:
+#   evidence-collection:
+#     runs-on: ubuntu-latest
+#     name: "Evidence: ${{ github.event_name }} @ ${{ github.sha }}"
+#     outputs:
+#       evidence_url: ${{ steps.upload.outputs.evidence-url }}
+#       sbom_url: ${{ steps.upload.outputs.sbom-url }}
+#       sca_url: ${{ steps.upload.outputs.sca-url }}
 
-    steps:
-      - name: Checkout with full history
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
+#     steps:
+#       - name: Checkout with full history
+#         uses: actions/checkout@v4
+#         with:
+#           fetch-depth: 0
+#           persist-credentials: false
 
-      - name: Setup evidence directory
-        run: |
-          mkdir -p EVIDENCE/P09
-          mkdir -p EVIDENCE/templates
+#       - name: Setup evidence directory
+#         run: |
+#           mkdir -p EVIDENCE/P09
+#           mkdir -p EVIDENCE/templates
 
-      - name: Generate SBOM with Syft (via Docker)
-        run: |
-          docker run --rm \
-            -v /var/run/docker.sock:/var/run/docker.sock \
-            anchore/syft:latest \
-            --scope all-layers \
-            "docker.io/ваш_образ_в_локальном_docker:тег" \
-            -o spdx-json
+#       - name: Generate SBOM with Syft (via Docker)
+#         run: |
+#           docker run --rm \
+#             -v /var/run/docker.sock:/var/run/docker.sock \
+#             anchore/syft:latest \
+#             --scope all-layers \
+#             "docker.io/ваш_образ_в_локальном_docker:тег" \
+#             -o spdx-json
 
-      - name: Create SBOM symlinks
-        run: |
-          cp "EVIDENCE/P09/sbom-${{ github.sha }}.json" "EVIDENCE/P09/sbom-latest.json"
-          ln -sf "sbom-latest.json" "EVIDENCE/P09/sbom.json"
-          echo "SBOM generated: sbom-${{ github.sha }}.json -> sbom.json"
+#       - name: Create SBOM symlinks
+#         run: |
+#           cp "EVIDENCE/P09/sbom-${{ github.sha }}.json" "EVIDENCE/P09/sbom-latest.json"
+#           ln -sf "sbom-latest.json" "EVIDENCE/P09/sbom.json"
+#           echo "SBOM generated: sbom-${{ github.sha }}.json -> sbom.json"
 
-      - name: Run SCA Analysis
-        uses: anchore/scan-action@v3
-        id: sca
-        with:
-          path: "EVIDENCE/P09/sbom-${{ github.sha }}.json"
+#       - name: Run SCA Analysis
+#         uses: anchore/scan-action@v3
+#         id: sca
+#         with:
+#           path: "EVIDENCE/P09/sbom-${{ github.sha }}.json"
 
-      - name: Generate SCA Summary
-        run: |
-          python3 scripts/generate-sca-summary.py \
-            "EVIDENCE/P09/sca_report-${{ github.sha }}.json" \
-            "EVIDENCE/P09/sca_summary-${{ github.sha }}.md"
+#       - name: Generate SCA Summary
+#         run: |
+#           python3 scripts/generate-sca-summary.py \
+#             "EVIDENCE/P09/sca_report-${{ github.sha }}.json" \
+#             "EVIDENCE/P09/sca_summary-${{ github.sha }}.md"
 
-          cp "EVIDENCE/P09/sca_summary-${{ github.sha }}.md" "EVIDENCE/P09/sca-summary-latest.md"
-          ln -sf "sca-summary-latest.md" "EVIDENCE/P09/sca_summary.md"
-          ln -sf "sca_report-${{ github.sha }}.json" "EVIDENCE/P09/sca_report.json"
-          ln -sf "sca_report-${{ github.sha }}.json" "EVIDENCE/P09/sca-latest.json"
+#           cp "EVIDENCE/P09/sca_summary-${{ github.sha }}.md" "EVIDENCE/P09/sca-summary-latest.md"
+#           ln -sf "sca-summary-latest.md" "EVIDENCE/P09/sca_summary.md"
+#           ln -sf "sca_report-${{ github.sha }}.json" "EVIDENCE/P09/sca_report.json"
+#           ln -sf "sca_report-${{ github.sha }}.json" "EVIDENCE/P09/sca-latest.json"
 
-      - name: Create Evidence Manifest
-        run: |
-          cat > EVIDENCE/P09/evidence-manifest.json << EOF
-          {
-            "practice": "P09",
-            "commit_sha": "${{ github.sha }}",
-            "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')",
-            "workflow_run": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-            "artifacts": {
-              "sbom": {
-                "path": "EVIDENCE/P09/sbom-${{ github.sha }}.json",
-                "symlink": "EVIDENCE/P09/sbom.json",
-                "format": "SPDX-JSON",
-                "tool": "anchore/syft@v0.102.1"
-              },
-              "sca_report": {
-                "path": "EVIDENCE/P09/sca_report-${{ github.sha }}.json",
-                "symlink": "EVIDENCE/P09/sca_report.json",
-                "format": "JSON",
-                "tool": "anchore/grype@latest"
-              },
-              "sca_summary": {
-                "path": "EVIDENCE/P09/sca_summary-${{ github.sha }}.md",
-                "symlink": "EVIDENCE/P09/sca_summary.md",
-                "format": "Markdown"
-              }
-            },
-            "traceability": {
-              "commit_url": "https://github.com/${{ github.repository }}/commit/${{ github.sha }}",
-              "pr_url": "${{ github.event.pull_request.html_url }}",
-              "evidence_index": "https://github.com/${{ github.repository }}/tree/main/EVIDENCE"
-            }
-          }
-          EOF
+#       - name: Create Evidence Manifest
+#         run: |
+#           cat > EVIDENCE/P09/evidence-manifest.json << EOF
+#           {
+#             "practice": "P09",
+#             "commit_sha": "${{ github.sha }}",
+#             "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')",
+#             "workflow_run": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+#             "artifacts": {
+#               "sbom": {
+#                 "path": "EVIDENCE/P09/sbom-${{ github.sha }}.json",
+#                 "symlink": "EVIDENCE/P09/sbom.json",
+#                 "format": "SPDX-JSON",
+#                 "tool": "anchore/syft@v0.102.1"
+#               },
+#               "sca_report": {
+#                 "path": "EVIDENCE/P09/sca_report-${{ github.sha }}.json",
+#                 "symlink": "EVIDENCE/P09/sca_report.json",
+#                 "format": "JSON",
+#                 "tool": "anchore/grype@latest"
+#               },
+#               "sca_summary": {
+#                 "path": "EVIDENCE/P09/sca_summary-${{ github.sha }}.md",
+#                 "symlink": "EVIDENCE/P09/sca_summary.md",
+#                 "format": "Markdown"
+#               }
+#             },
+#             "traceability": {
+#               "commit_url": "https://github.com/${{ github.repository }}/commit/${{ github.sha }}",
+#               "pr_url": "${{ github.event.pull_request.html_url }}",
+#               "evidence_index": "https://github.com/${{ github.repository }}/tree/main/EVIDENCE"
+#             }
+#           }
+#           EOF
 
-      - name: Generate DS Report Template
-        run: |
-          python3 scripts/generate-ds-report.py \
-            --sbom "EVIDENCE/P09/sbom-${{ github.sha }}.json" \
-            --sca "EVIDENCE/P09/sca_report-${{ github.sha }}.json" \
-            --output "EVIDENCE/templates/ds-report-${{ github.sha }}.md"
+#       - name: Generate DS Report Template
+#         run: |
+#           python3 scripts/generate-ds-report.py \
+#             --sbom "EVIDENCE/P09/sbom-${{ github.sha }}.json" \
+#             --sca "EVIDENCE/P09/sca_report-${{ github.sha }}.json" \
+#             --output "EVIDENCE/templates/ds-report-${{ github.sha }}.md"
 
-      - name: Upload Evidence Artifacts
-        id: upload
-        uses: actions/upload-artifact@v4
-        with:
-          name: evidence-p09-${{ github.sha }}
-          path: |
-            EVIDENCE/P09/
-            EVIDENCE/templates/
-          retention-days: 90
-          if-no-files-found: error
+#       - name: Upload Evidence Artifacts
+#         id: upload
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: evidence-p09-${{ github.sha }}
+#           path: |
+#             EVIDENCE/P09/
+#             EVIDENCE/templates/
+#           retention-days: 90
+#           if-no-files-found: error
 
-      - name: Create PR Comment with Evidence Links
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        id: pr-comment
-        with:
-          script: |
-            const evidenceLinks = `
-            ## 🔍 Security Evidence Collected
+#       - name: Create PR Comment with Evidence Links
+#         if: github.event_name == 'pull_request'
+#         uses: actions/github-script@v7
+#         id: pr-comment
+#         with:
+#           script: |
+#             const evidenceLinks = `
+#             ## 🔍 Security Evidence Collected
 
-            ### 📁 Artifacts Location
-            - **SBOM:** \`EVIDENCE/P09/sbom.json\` ([raw](${{ github.server_url }}/${{ github.repository }}/raw/${{ github.sha }}/EVIDENCE/P09/sbom-${{ github.sha }}.json))
-            - **SCA Report:** \`EVIDENCE/P09/sca_report.json\` ([raw](${{ github.server_url }}/${{ github.repository }}/raw/${{ github.sha }}/EVIDENCE/P09/sca_report-${{ github.sha }}.json))
-            - **SCA Summary:** \`EVIDENCE/P09/sca_summary.md\` ([view](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}/EVIDENCE/P09/sca_summary-${{ github.sha }}.md))
+#             ### 📁 Artifacts Location
+#             - **SBOM:** \`EVIDENCE/P09/sbom.json\` ([raw](${{ github.server_url }}/${{ github.repository }}/raw/${{ github.sha }}/EVIDENCE/P09/sbom-${{ github.sha }}.json))
+#             - **SCA Report:** \`EVIDENCE/P09/sca_report.json\` ([raw](${{ github.server_url }}/${{ github.repository }}/raw/${{ github.sha }}/EVIDENCE/P09/sca_report-${{ github.sha }}.json))
+#             - **SCA Summary:** \`EVIDENCE/P09/sca_summary.md\` ([view](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}/EVIDENCE/P09/sca_summary-${{ github.sha }}.md))
 
-            ### 🔗 Direct Links
-            - **This Workflow Run:** https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-            - **Job:** \`evidence-collection\` ✅ Success
-            - **Commit:** [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
-            - **Evidence Manifest:** [evidence-manifest.json](${{ github.server_url }}/${{ github.repository }}/raw/${{ github.sha }}/EVIDENCE/P09/evidence-manifest.json)
+#             ### 🔗 Direct Links
+#             - **This Workflow Run:** https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+#             - **Job:** \`evidence-collection\` ✅ Success
+#             - **Commit:** [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
+#             - **Evidence Manifest:** [evidence-manifest.json](${{ github.server_url }}/${{ github.repository }}/raw/${{ github.sha }}/EVIDENCE/P09/evidence-manifest.json)
 
-            ### 📊 Quick Stats
-            \`\`\`
-            ${{ steps.sca.outputs.summary }}
-            \`\`\`
+#             ### 📊 Quick Stats
+#             \`\`\`
+#             ${{ steps.sca.outputs.summary }}
+#             \`\`\`
 
-            ### 🎯 Next Steps for DS Report
-            1. Review SCA findings in \`sca_summary.md\`
-            2. Use \`EVIDENCE/templates/ds-report-${{ github.sha }}.md\` as template
-            3. Reference artifacts in final DS section
-            4. Verify traceability via evidence-manifest.json
+#             ### 🎯 Next Steps for DS Report
+#             1. Review SCA findings in \`sca_summary.md\`
+#             2. Use \`EVIDENCE/templates/ds-report-${{ github.sha }}.md\` as template
+#             3. Reference artifacts in final DS section
+#             4. Verify traceability via evidence-manifest.json
 
-            ---
-            *Automatically generated by Security Evidence Pipeline*
-            `;
+#             ---
+#             *Automatically generated by Security Evidence Pipeline*
+#             `;
 
-            // Поиск существующего комментария от бота
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
+#             // Поиск существующего комментария от бота
+#             const { data: comments } = await github.rest.issues.listComments({
+#               owner: context.repo.owner,
+#               repo: context.repo.repo,
+#               issue_number: context.issue.number,
+#             });
 
-            const botComment = comments.find(comment =>
-              comment.user.type === 'Bot' &&
-              comment.body.includes('Security Evidence Collected')
-            );
+#             const botComment = comments.find(comment =>
+#               comment.user.type === 'Bot' &&
+#               comment.body.includes('Security Evidence Collected')
+#             );
 
-            if (botComment) {
-              // Обновить существующий
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: botComment.id,
-                body: evidenceLinks
-              });
-            } else {
-              // Создать новый
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: evidenceLinks
-              });
-            }
+#             if (botComment) {
+#               // Обновить существующий
+#               await github.rest.issues.updateComment({
+#                 owner: context.repo.owner,
+#                 repo: context.repo.repo,
+#                 comment_id: botComment.id,
+#                 body: evidenceLinks
+#               });
+#             } else {
+#               // Создать новый
+#               await github.rest.issues.createComment({
+#                 owner: context.repo.owner,
+#                 repo: context.repo.repo,
+#                 issue_number: context.issue.number,
+#                 body: evidenceLinks
+#               });
+#             }
 
-      - name: Update Evidence Index
-        run: |
-          # Создаем HTML индекс для удобного просмотра
-          cat > EVIDENCE/index.html << EOF
-          <!DOCTYPE html>
-          <html>
-          <head>
-              <title>Evidence Index - ${{ github.repository }}</title>
-              <style>
-                  body { font-family: Arial, sans-serif; margin: 40px; }
-                  .artifact { border: 1px solid #ddd; padding: 15px; margin: 10px 0; }
-                  .success { color: green; }
-                  .warning { color: orange; }
-              </style>
-          </head>
-          <body>
-              <h1>🔍 Evidence Collection</h1>
-              <p><strong>Repository:</strong> ${{ github.repository }}</p>
-              <p><strong>Commit:</strong> <code>${{ github.sha }}</code></p>
-              <p><strong>Generated:</strong> $(date)</p>
+#       - name: Update Evidence Index
+#         run: |
+#           # Создаем HTML индекс для удобного просмотра
+#           cat > EVIDENCE/index.html << EOF
+#           <!DOCTYPE html>
+#           <html>
+#           <head>
+#               <title>Evidence Index - ${{ github.repository }}</title>
+#               <style>
+#                   body { font-family: Arial, sans-serif; margin: 40px; }
+#                   .artifact { border: 1px solid #ddd; padding: 15px; margin: 10px 0; }
+#                   .success { color: green; }
+#                   .warning { color: orange; }
+#               </style>
+#           </head>
+#           <body>
+#               <h1>🔍 Evidence Collection</h1>
+#               <p><strong>Repository:</strong> ${{ github.repository }}</p>
+#               <p><strong>Commit:</strong> <code>${{ github.sha }}</code></p>
+#               <p><strong>Generated:</strong> $(date)</p>
 
-              <h2>📁 Available Artifacts</h2>
+#               <h2>📁 Available Artifacts</h2>
 
-              <div class="artifact">
-                  <h3>📋 SBOM (Software Bill of Materials)</h3>
-                  <ul>
-                      <li><a href="P09/sbom.json">Latest SBOM (symlink)</a></li>
-                      <li><a href="P09/sbom-${{ github.sha }}.json">This commit: sbom-${{ github.sha }}.json</a></li>
-                      <li><strong>Format:</strong> SPDX JSON</li>
-                      <li><strong>Tool:</strong> Anchore Syft v0.102.1</li>
-                  </ul>
-              </div>
+#               <div class="artifact">
+#                   <h3>📋 SBOM (Software Bill of Materials)</h3>
+#                   <ul>
+#                       <li><a href="P09/sbom.json">Latest SBOM (symlink)</a></li>
+#                       <li><a href="P09/sbom-${{ github.sha }}.json">This commit: sbom-${{ github.sha }}.json</a></li>
+#                       <li><strong>Format:</strong> SPDX JSON</li>
+#                       <li><strong>Tool:</strong> Anchore Syft v0.102.1</li>
+#                   </ul>
+#               </div>
 
-              <div class="artifact">
-                  <h3>⚠️ SCA Report (Security Analysis)</h3>
-                  <ul>
-                      <li><a href="P09/sca_report.json">Latest Report (symlink)</a></li>
-                      <li><a href="P09/sca_report-${{ github.sha }}.json">Full JSON: sca_report-${{ github.sha }}.json</a></li>
-                      <li><a href="P09/sca_summary.md">Human Summary (symlink)</a></li>
-                      <li><a href="P09/sca_summary-${{ github.sha }}.md">This commit: sca_summary-${{ github.sha }}.md</a></li>
-                  </ul>
-              </div>
+#               <div class="artifact">
+#                   <h3>⚠️ SCA Report (Security Analysis)</h3>
+#                   <ul>
+#                       <li><a href="P09/sca_report.json">Latest Report (symlink)</a></li>
+#                       <li><a href="P09/sca_report-${{ github.sha }}.json">Full JSON: sca_report-${{ github.sha }}.json</a></li>
+#                       <li><a href="P09/sca_summary.md">Human Summary (symlink)</a></li>
+#                       <li><a href="P09/sca_summary-${{ github.sha }}.md">This commit: sca_summary-${{ github.sha }}.md</a></li>
+#                   </ul>
+#               </div>
 
-              <div class="artifact">
-                  <h3>📄 Evidence Metadata</h3>
-                  <ul>
-                      <li><a href="P09/evidence-manifest.json">Evidence Manifest</a> - Traceability data</li>
-                      <li><a href="DS_GUIDE.md">DS Report Guide</a> - How to use for final report</li>
-                      <li><a href="templates/ds-report-${{ github.sha }}.md">DS Report Template</a></li>
-                  </ul>
-              </div>
+#               <div class="artifact">
+#                   <h3>📄 Evidence Metadata</h3>
+#                   <ul>
+#                       <li><a href="P09/evidence-manifest.json">Evidence Manifest</a> - Traceability data</li>
+#                       <li><a href="DS_GUIDE.md">DS Report Guide</a> - How to use for final report</li>
+#                       <li><a href="templates/ds-report-${{ github.sha }}.md">DS Report Template</a></li>
+#                   </ul>
+#               </div>
 
-              <h2>🔗 Traceability</h2>
-              <ul>
-                  <li><a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">Workflow Run</a></li>
-                  <li><a href="https://github.com/${{ github.repository }}/commit/${{ github.sha }}">Commit</a></li>
-                  <li><a href="../README.md#evidence">Project Documentation</a></li>
-              </ul>
+#               <h2>🔗 Traceability</h2>
+#               <ul>
+#                   <li><a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">Workflow Run</a></li>
+#                   <li><a href="https://github.com/${{ github.repository }}/commit/${{ github.sha }}">Commit</a></li>
+#                   <li><a href="../README.md#evidence">Project Documentation</a></li>
+#               </ul>
 
-              <hr>
-              <p><em>Generated by Security Evidence Pipeline</em></p>
-          </body>
-          </html>
-          EOF
+#               <hr>
+#               <p><em>Generated by Security Evidence Pipeline</em></p>
+#           </body>
+#           </html>
+#           EOF

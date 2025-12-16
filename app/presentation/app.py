@@ -76,3 +76,8 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.include_router(login_router)
 app.include_router(media_router)
+
+
+@app.get("/health")
+async def get_health() -> dict:
+    return {"status": "health"}

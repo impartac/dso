@@ -33,3 +33,5 @@ grype.db*
 !EVIDENCE/README.md
 
 .secrets
+trivy-reports/
+proofs/

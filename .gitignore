@@ -35,3 +35,4 @@ grype.db*
 .secrets
 trivy-reports/
 proofs/
+.htmlcov

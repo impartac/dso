@@ -242,6 +242,14 @@ jobs:
     name: Container security
     runs-on: ubuntu-latest
     steps:
+      - name: Check for docker-compose files
+        run: |
+          echo "=== Current directory ==="
+          pwd
+          echo -e "\n=== Files in root ==="
+          ls -la
+          echo -e "\n=== Looking for docker-compose files ==="
+          find . -name "*.yml" -o -name "*.yaml" | grep -i compose
       - name: Run security scans with docker-compose
         run: |
           # Собираем образ

@@ -1,0 +1,185 @@
+# 🛡️ Vulnerability Waivers Policy
+# Версия: 1.1.0
+# Последнее обновление: 2024-01-15
+# Используется в CI/CD для игнорирования известных ложных срабатываний и запланированных исправлений
+
+# 📋 Правила использования waivers:
+# 1. Каждый waiver должен иметь четкое обоснование
+# 2. Указывается срок действия (expires)
+# 3. Должна быть ссылка на Issue/PR для отслеживания
+# 4. Указывается ответственный (owner)
+# 5. Периодически пересматриваются (review_interval)
+
+# 🎯 Категории waivers:
+# - false_positive: Ложное срабатывание
+# - risk_accepted: Риск принят (низкая вероятность эксплуатации)
+# - deferred_fix: Исправление отложено (запланировано)
+# - mitigated: Уязвимость устранена другими способами
+
+waivers:
+  # Пример 1: Ложное срабатывание в тестовой зависимости
+  - id: "waiver-001"
+    vulnerability_id: "CVE-2023-12345"
+    package:
+      name: "example-test-package"
+      version: "1.2.3"
+      ecosystem: "npm"
+    reason: "false_positive"
+    justification: |
+      Данная уязвимость затрагивает только функционал, который не используется в продакшене.
+      Пакет используется исключительно в тестовом окружении (devDependencies) и не попадает в финальную сборку.
+      Уязвимость требует наличия специальной конфигурации, которой нет в нашем проекте.
+    references:
+      - type: "issue"
+        url: "https://github.com/org/repo/issues/123"
+        title: "Исследование CVE-2023-12345 в тестовых зависимостях"
+      - type: "pr"
+        url: "https://github.com/org/repo/pull/456"
+        title: "Обновление тестовых зависимостей"
+    status: "active"
+    severity: "medium"
+    expires: "2024-06-30"  # Пересмотреть через 6 месяцев
+    review_interval: "3 months"
+    owner: "security-team"
+    created: "2024-01-15"
+    created_by: "alexey@example.com"
+    approved_by: "security-committee"
+
+    # Автоматическое игнорирование в инструментах
+    tool_specific:
+      grype:
+        ignore_rule: |
+          - vulnerability: CVE-2023-12345
+            package:
+              name: example-test-package
+              version: 1.2.3
+      trivy:
+        ignore: CVE-2023-12345
+
+  # Пример 2: Отложенное исправление - требуется рефакторинг
+  - id: "waiver-002"
+    vulnerability_id: "CVE-2024-23456"
+    package:
+      name: "legacy-package"
+      version: "0.9.8"
+      ecosystem: "pypi"
+    reason: "deferred_fix"
+    justification: |
+      Уязвимость затрагивает устаревший пакет, который глубоко интегрирован в кодовую базу.
+      Для обновления требуется значительный рефакторинг (≈40 часов разработки).
+      Риск эксплуатации низкий, так как уязвимость требует аутентификации администратора.
+      Исправление запланировано на Q2 2024 в рамках эпика "Модернизация legacy-компонентов".
+    mitigation: |
+      - Временная мера: Добавлен WAF-правило для блокировки известных векторов атаки
+      - Усилен мониторинг запросов к эндпоинтам, использующим legacy-package
+      - Ограничены права доступа к админ-интерфейсу
+    references:
+      - type: "epic"
+        url: "https://github.com/org/repo/issues/789"
+        title: "Модернизация legacy-компонентов"
+      - type: "milestone"
+        url: "https://github.com/org/repo/milestone/5"
+        title: "Q2 2024 - Технический долг"
+    action_plan:
+      - step: "Анализ влияния"
+        due: "2024-03-01"
+        owner: "backend-team"
+      - step: "Разработка миграционного плана"
+        due: "2024-04-15"
+        owner: "tech-lead"
+      - step: "Рефакторинг и тестирование"
+        due: "2024-05-30"
+        owner: "dev-team"
+    status: "active"
+    severity: "high"
+    expires: "2024-06-30"  # Должен быть исправлен к этому сроку
+    review_interval: "1 month"
+    owner: "backend-team-lead"
+    created: "2024-01-10"
+    created_by: "maria@example.com"
+    approved_by: "cto"
+
+  # Пример 3: Принятый риск - уязвимость в косвенной зависимости
+  - id: "waiver-003"
+    vulnerability_id: "GHSA-abc123-def456"
+    package:
+      name: "transitive-dependency"
+      version: "2.1.0"
+      ecosystem: "maven"
+    reason: "risk_accepted"
+    justification: |
+      Уязвимость находится в транзитивной зависимости, которую мы не контролируем напрямую.
+      Основной пакет (наша прямая зависимость) еще не выпустил обновление с фиксом.
+      Альтернативные решения отсутствуют, так как пакет критичен для функциональности.
+      Вероятность эксплуатации в нашей архитектуре крайне низкая из-за сетевой изоляции сервиса.
+      Ведется мониторинг обновлений основного пакета.
+    references:
+      - type: "upstream_issue"
+        url: "https://github.com/upstream/repo/issues/999"
+        title: "Зависимость от vulnerable transitive-dependency"
+      - type: "internal_doc"
+        url: "https://internal-wiki/security/transitive-risk-assessment"
+        title: "Оценка риска транзитивных зависимостей"
+    monitoring:
+      - check: "Обновление основного пакета"
+        frequency: "weekly"
+        owner: "dependabot"
+      - check: "Новые векторы атаки"
+        frequency: "daily"
+        owner: "security-team"
+    status: "active"
+    severity: "medium"
+    expires: "2024-03-31"  # Пересмотреть после обновления основного пакета
+    review_interval: "2 weeks"
+    owner: "security-team"
+    created: "2024-01-05"
+    created_by: "security-bot"
+    approved_by: "security-committee"
+
+# 🔧 Конфигурация автоматической проверки waivers
+validation:
+  enabled: true
+  check_on:
+    - push
+    - pull_request
+    - schedule: "0 9 * * 1"  # Каждый понедельник в 9:00
+  max_severity_without_approval: "medium"
+  require_owner_approval: true
+  escalation_path:
+    - "tech-lead"
+    - "security-team"
+    - "cto"
+
+  # Автоматическое отклонение просроченных waivers
+  auto_reject_expired: true
+  grace_period_days: 7
+
+  # Интеграция с Issue Tracker
+  create_issues_for:
+    - expired_waivers
+    - high_severity_no_waiver
+  issue_labels:
+    - "security"
+    - "vulnerability"
+    - "waiver"
+
+# 📊 Отчетность
+reporting:
+  generate_on:
+    - weekly
+    - on_waiver_change
+  formats:
+    - markdown
+    - json
+    - html
+  destinations:
+    - security_dashboard
+    - slack: "#security-alerts"
+    - email: "security-team@example.com"
+
+  metrics:
+    - total_waivers
+    - waivers_by_severity
+    - expired_waivers
+    - waivers_by_owner
+    - average_waiver_age

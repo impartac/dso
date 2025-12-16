@@ -19,7 +19,7 @@ python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
-addopts = "-v --strict-markers"
+addopts = "-v -s --tb=short --strict-markers"
 
 [tool.coverage.run]
 source = ["app"]

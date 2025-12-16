@@ -8,7 +8,7 @@ import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 ROOT = Path(__file__).resolve().parents[1]  # корень репозитория
 if str(ROOT) not in sys.path:
@@ -29,29 +29,8 @@ from app.infrastructure.config import settings
 from app.infrastructure.hasher import Hasher
 
 # Импорт моделей для создания таблиц
-from app.infrastructure.orm import Base
 from app.infrastructure.unit_of_work import UnitOfWork
 from app.presentation.app import app
-
-
-# Фикстура для тестовой базы данных
-@pytest_asyncio.fixture(scope="session")
-async def test_engine():
-    # Используем тестовую базу данных (например, SQLite в памяти)
-    test_db_url = "sqlite+aiosqlite:///:memory:"
-    engine = create_async_engine(test_db_url, echo=False)
-
-    # Создаем таблицы
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    yield engine
-
-    # Очистка
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-
-    await engine.dispose()
 
 
 # Фикстура для тестовой сессии

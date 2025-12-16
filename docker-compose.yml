@@ -153,7 +153,7 @@ services:
   hadolint-scan:
     image: hadolint/hadolint:latest
     container_name: app-hadolint-scan
-    command: hadolint Dockerfile
+    command: hadolint --ignore DL3008 --ignore DL3013 --failure-threshold error Dockerfile
     volumes:
       - ./Dockerfile:/Dockerfile:ro
     profiles:

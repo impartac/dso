@@ -116,16 +116,16 @@ jobs:
         run: |
           pip install ruff black isort mypy bandit safety
 
-      - name: Run Ruff linter
-        run: |
-          ruff check .
-          ruff format --check .
-
       - name: Run Black
         run: black --check .
 
       - name: Run isort
         run: isort --check-only .
+
+      - name: Run Ruff linter
+        run: |
+            ruff check .
+            ruff format --check .
 
       - name: Run security checks
         run: |

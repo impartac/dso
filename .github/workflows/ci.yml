@@ -257,6 +257,22 @@ jobs:
             safety-report.json
             pip-audit-report.json
             .secrets.baseline
+  container-security:
+    name: Container security
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run security scans with docker-compose
+        run: |
+          # Собираем образ
+          docker compose --profile ci build app
+
+          # Запускаем сканирование
+          docker compose --profile ci run --rm trivy-image
+          docker compose --profile ci run --rm trivy-config
+          docker compose --profile ci run --rm hadolint-scan
+
+          # Копируем отчеты
+          cp -r trivy-reports/ .
   build:
     name: Build and Package
     runs-on: ubuntu-latest

@@ -243,6 +243,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - name: Debug - Show all files
         run: |
           echo "=== Current directory ==="

@@ -41,13 +41,14 @@ jobs:
           mkdir -p EVIDENCE/P09
           mkdir -p EVIDENCE/templates
 
-      - name: Generate SBOM (фиксированная версия)
-        uses: anchore/sbom-action@v0.15.1
-        id: sbom
-        with:
-          image: "ghcr.io/${{ github.repository }}:${GITHUB_SHA:0:8}"
-          format: "spdx-json"
-          output-file: "EVIDENCE/P09/sbom-${{ github.sha }}.json"
+      - name: Generate SBOM with Syft (via Docker)
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            anchore/syft:latest \
+            --scope all-layers \
+            "docker.io/ваш_образ_в_локальном_docker:тег" \
+            -o spdx-json
 
       - name: Create SBOM symlinks
         run: |

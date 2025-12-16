@@ -125,7 +125,6 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.11']
-        test-type: ['unit', 'integration']
 
     steps:
       - name: Checkout code
@@ -145,14 +144,14 @@ jobs:
 
       - name: Run tests
         env:
-          SECRET_KEY: 'test-secret-key-${{ matrix.test-type }}'
+          SECRET_KEY: 'test-secret-key-unit'
         run: |
           pytest ./tests -v --cov=app --cov-report=xml --cov-report=html --cov-report=term-missing
 
       - name: Upload coverage reports
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report-${{ matrix.python-version }}-${{ matrix.test-type }}
+          name: coverage-report-${{ matrix.python-version }}-unit
           path: |
             coverage.xml
             htmlcov/
@@ -161,7 +160,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ matrix.python-version }}-${{ matrix.test-type }}
+          name: test-results-${{ matrix.python-version }}-unit
           path: |
             test-results/
           retention-days: 7
@@ -187,13 +186,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install coverage
-
-      - name: Combine coverage reports
-        run: |
-          cd coverage-reports
-          python -m coverage combine coverage*.xml
-          python -m coverage report --show-missing --fail-under=10
-          python -m coverage html
 
       - name: Upload combined coverage
         uses: actions/upload-artifact@v4

@@ -168,7 +168,7 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.TOKEN }}
 
       - name: Extract metadata for Docker
         id: meta
@@ -205,110 +205,6 @@ jobs:
           path: |
             dist/*.whl
           retention-days: 30
-
-  deploy-staging:
-    name: Deploy to Staging
-    runs-on: ubuntu-latest
-    needs: [test, lint, build]
-    if: github.ref == 'refs/heads/develop' || github.event_name == 'workflow_dispatch'
-    environment: staging
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Log into container registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Promote to staging
-        run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging
-          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging
-
-      - name: Deploy to staging (mock)
-        env:
-          STAGING_URL: ${{ secrets.STAGING_URL }}
-          STAGING_API_KEY: ${{ secrets.STAGING_API_KEY }}
-        run: |
-          echo "::add-mask::${{ secrets.STAGING_API_KEY }}"
-          echo "🚀 Deploying to staging environment..."
-          echo "📦 Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging"
-          echo "🌐 Endpoint: ${{ secrets.STAGING_URL }}"
-
-          # Эмуляция деплоя - в реальности здесь был бы kubectl, helm, ssh и т.д.
-          echo "✅ Deployment to staging completed successfully!"
-
-          # Отправка уведомления
-          curl -X POST -H "Content-Type: application/json" \
-            -d '{"text":"✅ Staging deployment successful for commit ${{ github.sha }}"}' \
-            ${{ secrets.SLACK_WEBHOOK_URL }} || echo "Slack notification skipped"
-
-      - name: Run staging smoke tests
-        env:
-          STAGING_URL: ${{ secrets.STAGING_URL }}
-        run: |
-          echo "Running smoke tests on staging..."
-          # Здесь были бы реальные smoke tests
-          echo "✅ Smoke tests passed!"
-
-  deploy-production:
-    name: Deploy to Production
-    runs-on: ubuntu-latest
-    needs: [test, lint, build, deploy-staging]
-    if: startsWith(github.ref, 'refs/tags/v')
-    environment: production
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Log into container registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Promote to production
-        run: |
-          # Получаем версию из тега
-          VERSION=${GITHUB_REF#refs/tags/v}
-
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v$VERSION
-
-          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v$VERSION
-
-      - name: Deploy to production (mock)
-        env:
-          PRODUCTION_URL: ${{ secrets.PRODUCTION_URL }}
-          PRODUCTION_API_KEY: ${{ secrets.PRODUCTION_API_KEY }}
-          K8S_NAMESPACE: production
-        run: |
-          echo "::add-mask::${{ secrets.PRODUCTION_API_KEY }}"
-          echo "🚀 Deploying to production environment..."
-          echo "📦 Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
-          echo "🌐 Endpoint: ${{ secrets.PRODUCTION_URL }}"
-          echo "📁 Namespace: $K8S_NAMESPACE"
-
-          # Эмуляция деплоя в Kubernetes
-          echo "🔧 Applying Kubernetes manifests..."
-          # kubectl apply -f k8s/production.yaml -n $K8S_NAMESPACE
-          # kubectl rollout status deployment/app -n $K8S_NAMESPACE
-
-          echo "✅ Production deployment completed successfully!"
-
-          # Отправка релиз-уведомления
-          curl -X POST -H "Content-Type: application/json" \
-            -d '{"text":"🎉 Production release v${VERSION} deployed successfully!"}' \
-            ${{ secrets.SLACK_WEBHOOK_URL }} || echo "Slack notification skipped"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1

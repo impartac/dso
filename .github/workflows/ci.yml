@@ -251,24 +251,15 @@ jobs:
           ls -la
           echo -e "\n=== Looking for docker-compose files ==="
           find . -name "*.yml" -o -name "*.yaml" | grep -i compose || echo "No compose files found"
-
-      - name: Check for docker-compose files
-        run: |
-          echo "=== Current directory ==="
-          pwd
-          echo -e "\n=== Files in root ==="
-          ls -la
-          echo -e "\n=== Looking for docker-compose files ==="
-          find . -name "*.yml" -o -name "*.yaml" | grep -i compose
       - name: Run security scans with docker-compose
         run: |
           # Собираем образ
-          docker compose -f docker-compose.yml build app
+          docker compose -f ./docker-compose.yml build app
 
           # Запускаем сканирование
-          docker compose -f docker-compose.yml run --rm trivy-image
-          docker compose -f docker-compose.yml run --rm trivy-config
-          docker compose -f docker-compose.yml run --rm hadolint-scan
+          docker compose -f ./docker-compose.yml run --rm trivy-image
+          docker compose -f ./docker-compose.yml run --rm trivy-config
+          docker compose -f ./docker-compose.yml run --rm hadolint-scan
 
           # Копируем отчеты
           cp -r trivy-reports/ .

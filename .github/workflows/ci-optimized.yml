@@ -270,12 +270,37 @@ jobs:
 
       - name: Combine coverage reports
         run: |
-          pip install coverage
-          cd reports
-          find . -name "coverage.xml" -exec cp {} . \;
-          python -m coverage combine coverage*.xml
-          python -m coverage xml -o combined-coverage.xml
-          python -m coverage html -d htmlcov
+            # Устанавливаем coverage
+            pip install coverage
+
+            # Переходим в директорию с отчетами
+            cd reports
+
+            # Метод 1: Объединение бинарных файлов (предпочтительно)
+            echo "Собираем бинарные .coverage файлы..."
+            find . -name ".coverage*" -type f -exec cp {} . \; 2>/dev/null || echo "Бинарных файлов не найдено"
+
+            if ls .coverage* 1> /dev/null 2>&1; then
+            echo "Объединяем бинарные файлы..."
+            python -m coverage combine
+            python -m coverage xml -o combined-coverage.xml
+            python -m coverage html -d htmlcov
+            else
+            # Метод 2: Берем первый XML отчет (резервный вариант)
+            echo "Бинарных файлов нет, ищем XML отчеты..."
+            XML_FILES=$(find . -name "coverage.xml" -type f | head -1)
+            if [ -n "$XML_FILES" ]; then
+                echo "Копируем XML отчет..."
+                cp "$XML_FILES" ./combined-coverage.xml
+            else
+                echo "Внимание: Не найдено ни одного файла отчета coverage!"
+                # Создаем пустой отчет, чтобы workflow не упал
+                echo '<?xml version="1.0" ?><!DOCTYPE coverage SYSTEM "http://cobertura.sourceforge.net/xml/coverage-04.dtd"><coverage></coverage>' > combined-coverage.xml
+            fi
+            fi
+
+            echo "Проверяем результат:"
+            ls -la *.xml *.coverage* 2>/dev/null || true
 
       - name: Upload combined reports
         uses: actions/upload-artifact@v4

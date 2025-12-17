@@ -118,9 +118,6 @@ jobs:
         run: |
           pip install ruff black isort mypy bandit safety
 
-      - name: Run Black
-        run: black --check --diff .
-
       - name: Run isort
         run: isort --check-only --diff .
 

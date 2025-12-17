@@ -125,10 +125,26 @@ jobs:
         run: |
             ruff check --output-format=github .
 
-      - name: Run security checks
+      - name: Install security tools
         run: |
-          bandit -r app/ -f json -o bandit-report.json
-          safety check --json -o safety-report.json
+          python -m pip install --upgrade pip
+          pip install bandit safety pip-audit detect-secrets
+
+      - name: Run Bandit security scan
+        run: |
+          bandit -r app -f json -o bandit-report.json || true
+
+      - name: Run safety check
+        run: |
+          safety check -r requirements.txt --json > safety-report.json || true
+
+      - name: Run pip-audit
+        run: |
+          pip-audit -r requirements.txt --format json > pip-audit-report.json || true
+
+      - name: Detect secrets
+        run: |
+          detect-secrets scan > .secrets.baseline || true
 
       - name: Upload security reports
         uses: actions/upload-artifact@v4
@@ -137,7 +153,8 @@ jobs:
           path: |
             bandit-report.json
             safety-report.json
-          retention-days: 30
+            pip-audit-report.json
+            .secrets.baseline
 
   build:
     name: Build Artifacts

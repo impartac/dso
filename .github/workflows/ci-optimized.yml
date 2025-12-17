@@ -185,17 +185,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.TOKEN }}
 
-      - name: Extract metadata for Docker
-        id: meta
+      - name: Docker Meta
+
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix={{branch}}-
+            images: ghcr.io/impartac/dso
+            tags: |
+                type=ref,event=tag
+                type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+                type=sha,prefix=sha-,format=short,enable=${{ github.event_name != 'tag' }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5

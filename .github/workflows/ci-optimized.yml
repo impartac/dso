@@ -193,8 +193,6 @@ jobs:
             tags: |
                 type=ref,event=tag
                 type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-                type=sha,prefix=sha-,format=short,enable=${{ github.event_name != 'tag' }}
-
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:

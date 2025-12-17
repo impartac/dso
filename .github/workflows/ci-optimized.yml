@@ -200,12 +200,16 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: .
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            context: .
+            push: ${{ github.event_name != 'pull_request' }}
+            tags: ${{ steps.meta.outputs.tags }}
+            labels: ${{ steps.meta.outputs.labels }}
+            cache-from: type=gha
+            cache-to: type=gha,mode=max
+            # Явно включаем BuildKit и используем новый драйвер
+            builder: ${{ steps.buildx.outputs.name }}
+            # Добавляем возможность использовать COPY --chmod
+            build-args: BUILDKIT_SANDBOX_HOSTNAME=false
 
       - name: Build Python package
         if: contains(github.event.head_commit.message, 'release') || startsWith(github.ref, 'refs/tags/v')

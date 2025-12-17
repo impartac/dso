@@ -186,13 +186,16 @@ jobs:
           password: ${{ secrets.TOKEN }}
 
       - name: Docker Meta
-
+        id: meta
         uses: docker/metadata-action@v5
         with:
             images: ghcr.io/impartac/dso
             tags: |
                 type=ref,event=tag
-                type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+                type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+                type=ref,event=branch,suffix={{branch}}
+                type=ref,event=pr,suffix={{pr}}
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:

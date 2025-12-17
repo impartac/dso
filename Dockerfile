@@ -80,7 +80,7 @@ RUN groupadd -r appuser && useradd -r -g appuser -s /bin/bash -m appuser
 USER appuser
 
 # Разрешаем запись для hot-reload
-RUN chmod -R 755 /app
+# RUN chmod -R 755 /app
 
 ENV LOGGER_LEVEL="DEBUG"
 

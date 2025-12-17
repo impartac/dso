@@ -38,3 +38,11 @@ exclude_lines = [
     "class .*\\bProtocol\\):",
     "@(abc\\.)?abstractmethod",
 ]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+# Явно указываем, какие пакеты включать в дистрибутив
+packages = ["app"]  # если только 'app' - ваш основной пакет

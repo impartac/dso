@@ -266,57 +266,81 @@ jobs:
       - name: Download all test reports
         uses: actions/download-artifact@v4
         with:
-          path: reports/
+            path: reports/
 
       - name: Combine coverage reports
         run: |
-            # Устанавливаем coverage
             pip install coverage
-
-            # Переходим в директорию с отчетами
             cd reports
 
-            # Метод 1: Объединение бинарных файлов (предпочтительно)
-            echo "Собираем бинарные .coverage файлы..."
-            find . -name ".coverage*" -type f -exec cp {} . \; 2>/dev/null || echo "Бинарных файлов не найдено"
+            # Собираем бинарные .coverage файлы
+            echo "Looking for binary .coverage files..."
+            find . -name ".coverage*" -type f -exec cp {} . \; 2>/dev/null || true
+
+            # Пытаемся найти XML отчеты для резервного копирования
+            XML_FILES=$(find . -name "coverage.xml" -type f | head -5)
 
             if ls .coverage* 1> /dev/null 2>&1; then
-            echo "Объединяем бинарные файлы..."
-            python -m coverage combine
-            python -m coverage xml -o combined-coverage.xml
-            python -m coverage html -d htmlcov
-            else
-            # Метод 2: Берем первый XML отчет (резервный вариант)
-            echo "Бинарных файлов нет, ищем XML отчеты..."
-            XML_FILES=$(find . -name "coverage.xml" -type f | head -1)
-            if [ -n "$XML_FILES" ]; then
-                echo "Копируем XML отчет..."
-                cp "$XML_FILES" ./combined-coverage.xml
-            else
-                echo "Внимание: Не найдено ни одного файла отчета coverage!"
-                # Создаем пустой отчет, чтобы workflow не упал
-                echo '<?xml version="1.0" ?><!DOCTYPE coverage SYSTEM "http://cobertura.sourceforge.net/xml/coverage-04.dtd"><coverage></coverage>' > combined-coverage.xml
-            fi
-            fi
+                echo "Combining binary coverage files..."
+                python -m coverage combine
+                python -m coverage xml -o combined-coverage.xml
+                python -m coverage html -d htmlcov
+                echo "HTML coverage report generated."
 
-            echo "Проверяем результат:"
-            ls -la *.xml *.coverage* 2>/dev/null || true
+                # Создаем флаг, что htmlcov существует
+                echo "HTML_REPORT_EXISTS=true" >> $GITHUB_ENV
+            else
+                echo "No binary coverage files found."
 
+                # Если есть XML файлы, копируем первый
+                if [ -n "$XML_FILES" ]; then
+                echo "Using existing XML reports..."
+                # Создаем комбинированный XML из всех найденных
+                first_file=$(echo "$XML_FILES" | head -1)
+                cp "$first_file" ./combined-coverage.xml
+
+                # Пытаемся создать HTML отчет из XML (требуется coverage>=6.4)
+                if python -m coverage html -d htmlcov --data-file=./combined-coverage.xml 2>/dev/null; then
+                    echo "HTML report generated from XML."
+                    echo "HTML_REPORT_EXISTS=true" >> $GITHUB_ENV
+                else
+                    echo "Warning: Cannot generate HTML report from XML."
+                    echo "HTML_REPORT_EXISTS=false" >> $GITHUB_ENV
+                fi
+                else
+                echo "No coverage files found at all!"
+                echo "HTML_REPORT_EXISTS=false" >> $GITHUB_ENV
+
+                # Создаем пустой XML для артефакта
+                cat > combined-coverage.xml << 'EOF'
+                <?xml version="1.0" ?>
+                <!DOCTYPE coverage SYSTEM "http://cobertura.sourceforge.net/xml/coverage-04.dtd">
+                <coverage>
+                <sources>
+                    <source>/app</source>
+                </sources>
+                <packages/>
+                </coverage>
+                EOF
+                        fi
+                    fi
+
+                    echo "Resulting files:"
+                    ls -la *.xml *.coverage* 2>/dev/null || true
       - name: Upload combined reports
         uses: actions/upload-artifact@v4
         with:
-          name: combined-reports
-          path: |
-            reports/combined-coverage.xml
-            reports/htmlcov/
-            reports/junit.xml
-          retention-days: 30
+            name: combined-reports
+            path: |
+                reports/combined-coverage.xml
+                reports/htmlcov/
+            retention-days: 30
 
       - name: Publish coverage to GitHub Pages
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && env.HTML_REPORT_EXISTS == 'true'
         uses: peaceiris/actions-gh-pages@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: reports/htmlcov
-          destination_dir: coverage
-          keep_files: false
+            github_token: ${{ secrets.GITHUB_TOKEN }}
+            publish_dir: reports/htmlcov
+            destination_dir: coverage
+            keep_files: false

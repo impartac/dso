@@ -75,7 +75,7 @@ jobs:
         uses: anchore/scan-action@v3
         id: sca
         with:
-          path: "EVIDENCE/P09/sbom-${{ github.sha }}.json"
+            path: "EVIDENCE/P09/sbom-${{ github.sha }}.json"
 
       - name: Generate SCA Summary
         run: |

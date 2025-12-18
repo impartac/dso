@@ -119,13 +119,6 @@ jobs:
           }
           EOF
 
-      - name: Generate DS Report Template
-        run: |
-          python3 scripts/generate-ds-report.py \
-            --sbom "EVIDENCE/P09/sbom-${{ github.sha }}.json" \
-            --sca "EVIDENCE/P09/sca_report-${{ github.sha }}.json" \
-            --output "EVIDENCE/templates/ds-report-${{ github.sha }}.md"
-
       - name: Upload Evidence Artifacts
         id: upload
         uses: actions/upload-artifact@v4

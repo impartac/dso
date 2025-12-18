@@ -47,7 +47,7 @@ jobs:
             -v /var/run/docker.sock:/var/run/docker.sock \
             anchore/syft:latest \
             --scope all-layers \
-            "docker.io/ваш_образ_в_локальном_docker:тег" \
+            "docker.io/${{ github.repository }}:${{ github.sha }}" \
             -o spdx-json
 
       - name: Create SBOM symlinks

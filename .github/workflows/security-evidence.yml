@@ -1,7 +1,7 @@
 name: Security Evidence Collection
 
 on:
-  push:
+#   push:
   pull_request:
     branches: [ main, master ]
     types: [ opened, synchronize, reopened ]

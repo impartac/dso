@@ -1,8 +1,8 @@
 # SBOM Evidence Report
 ## Generation Details
-- **Commit SHA:** a54e2427c71a104f92ff9aebd09a238cb6ae14da
+- **Commit SHA:** eef8904af91c66a03ba43b9c937db785f6c4123a
 - **Repository:** impartac/dso
-- **Workflow Run:** https://github.com/impartac/dso/actions/runs/20350869365
-- **Generated:** 2025-12-18 20:49:06 UTC
+- **Workflow Run:** https://github.com/impartac/dso/actions/runs/20351004649
+- **Generated:** 2025-12-18 20:54:45 UTC
 - **Image Scanned:** Unknown
 - **SBOM Format:** SPDX-JSON

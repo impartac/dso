@@ -19,7 +19,7 @@ python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
-addopts = "-v --strict-markers"
+addopts = "-v -s --tb=short --strict-markers"
 
 [tool.coverage.run]
 source = ["app"]
@@ -37,4 +37,40 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "class .*\\bProtocol\\):",
     "@(abc\\.)?abstractmethod",
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dso"  # Обязательное поле
+version = "1.0.13"  # Обязательное поле - любые цифры, можно взять из git tag
+description = "DSO project"
+authors = [
+    {name = "Your Name", email = "your.email@example.com"}
+]
+dependencies = [
+    # Перечислите зависимости из requirements.txt
+    # "fastapi>=0.104.0",
+    # "sqlalchemy>=2.0.0",
+]
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+# Автоматически ищет пакеты в текущей директории
+where = ["."]
+# Явно указываем, какие пакеты включать
+include = ["app*", "db*"]
+# Исключаем непакетные директории
+exclude = [
+    "tests*", 
+    "test*", 
+    "docs*", 
+    "*tests*",
+    "policy*",
+    "EVIDENCE*",
+    "dist*",
+    "build*",
+    "*.egg-info*"
 ]

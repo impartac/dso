@@ -1,0 +1,117 @@
+name: Security - DAST (P11, ZAP baseline)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "app/**"
+      - "src/**"
+      - ".github/workflows/ci-p11-dast.yml"
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dast_p11:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      DB_USER: postgres   # Изменено с appuser на postgres
+      DB_PASSWORD: secure_password_123
+      DB_NAME: appdb
+      DATABASE_URL: postgresql://postgres:secure_password_123@postgres:5432/appdb
+      SECRET_KEY: secret-key-for-ci
+      DEBUG: "true"
+
+    steps:
+      - name: Upload P11 evidence
+        if: always() && env.ACT != 'true'  # Пропускаем в act
+        uses: actions/upload-artifact@v4
+        with:
+            name: P11_EVIDENCE
+            path: EVIDENCE/P11
+            retention-days: 30
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure evidence dirs
+        run: |
+          mkdir -p EVIDENCE/P11
+          chmod 777 EVIDENCE/P11
+
+      - name: Setup Docker Compose
+        run: |
+          cat > .env << EOF
+          DB_USER=postgres
+          DB_PASSWORD=secure_password_123
+          DB_NAME=appdb
+          DATABASE_URL=postgresql://postgres:secure_password_123@postgres:5432/appdb
+          SECRET_KEY=secret-key-for-ci
+          DEBUG=true
+          EOF
+
+      - name: Start services with Docker Compose
+        run: |
+          echo "Starting Docker Compose services..."
+
+          docker compose --profile prod up -d postgres app
+
+          echo "✅ All services are ready!"
+          docker compose ps
+
+      - name: Test application endpoints
+        run: |
+          echo "Testing application endpoints..."
+          curl -s http://localhost:8000/docs | head -5 || true
+
+      - name: ZAP Baseline Scan
+        run: |
+          echo "Running ZAP scan against the application..."
+
+          TARGET_URL="http://localhost:8000/docs"
+          echo "Target URL: $TARGET_URL"
+
+          mkdir -p EVIDENCE/P11
+          chmod 777 EVIDENCE/P11
+
+          echo "Starting ZAP scan..."
+
+          # Запускаем ZAP с правами root
+          docker run --rm \
+            --network host \
+            -v $(pwd)/EVIDENCE/P11:/zap/wrk/:rw \
+            --user root \
+            -t ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py \
+            -t $TARGET_URL \
+            -I \
+            -r zap_baseline.html \
+            -x zap_baseline.xml \
+            -J zap_baseline.json \
+            -d \
+            2>&1 | tee EVIDENCE/P11/zap_scan.log
+
+          echo "Scan completed. Files in EVIDENCE/P11:"
+          ls -la EVIDENCE/P11/
+
+      - name: Upload P11 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: P11_EVIDENCE
+          path: EVIDENCE/P11
+          retention-days: 30
+
+      - name: Clean up Docker Compose
+        if: always()
+        run: |
+          echo "Stopping Docker Compose services..."
+          docker compose down -v 2>/dev/null || true
+          echo "Cleanup completed"

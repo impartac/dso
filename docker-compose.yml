@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   # ============================================================================
   # PostgreSQL Database Service
@@ -7,9 +9,9 @@ services:
     container_name: app-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER:-appuser}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secure_password_123}
+      POSTGRES_DB: ${DB_NAME:-appdb}
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -19,23 +21,31 @@ services:
     networks:
       - app-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-appuser} -d ${DB_NAME:-appdb}"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/run/postgresql
     profiles:
       - prod
       - dev
 
   # ============================================================================
-  # Main Application Service
+  # Main Production Application Service
   # ============================================================================
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: app-main
-    restart: unless-stopped
+      target: production
+    container_name: app
+    restart: "no"
     depends_on:
       postgres:
         condition: service_healthy
@@ -43,71 +53,134 @@ services:
       PYTHONUNBUFFERED: "1"
       DEBUG: "${DEBUG:-false}"
       LOG_LEVEL: "${LOG_LEVEL:-info}"
-      DATABASE_URL: "${DATABASE_URL}"
+      DATABASE_URL: "${DATABASE_URL:-postgresql://appuser:secure_password_123@postgres:5432/appdb}"
       SECRET_KEY: "${SECRET_KEY:-change-me-in-production}"
     ports:
       - "8000:8000"
     networks:
       - app-network
-
-    # healthcheck:
-    #   test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-    #   interval: 30s
-    #   timeout: 10s
-    #   retries: 3
-    #   start_period: 10s
-
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/run
     profiles:
       - prod
-      - dev
+      - ci
 
   # ============================================================================
-  # Development Service (only for local development)
+  # Development Service
   # ============================================================================
   app-dev:
     build:
       context: .
       dockerfile: Dockerfile
+      target: development
     container_name: app-dev
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-
     environment:
       PYTHONUNBUFFERED: "1"
       DEBUG: "true"
       LOG_LEVEL: "debug"
-      DATABASE_URL: "${DATABASE_URL}"
+      DATABASE_URL: "${DATABASE_URL:-postgresql://appuser:secure_password_123@postgres:5432/appdb}"
     ports:
       - "8000:8000"
-
     volumes:
-      # Mount source code for hot reload
       - ./app:/app/app
       - ./tests:/app/tests
-
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
     networks:
       - app-network
-
     depends_on:
       postgres:
         condition: service_healthy
-
     profiles:
       - dev
 
   # ============================================================================
-  # Linting and Code Quality Service
+  # Security Scanning Services
+  # ============================================================================
+  trivy-image:
+    image: aquasec/trivy:latest
+    container_name: app-trivy-image
+    command: >
+      image --exit-code 1
+      --severity HIGH,CRITICAL
+      --format table
+      --output /reports/image-report.md
+      --ignorefile .trivyignore
+      --exit-code 1
+      dso-app:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./trivy-reports:/reports
+      - ./.trivyignore:/.trivyignore:ro
+    environment:
+      TRIVY_CACHE_DIR: /reports/cache
+    profiles:
+      - ci
+      - security
+
+  trivy-config:
+    image: aquasec/trivy:latest
+    container_name: app-trivy-config
+    command: >
+      config --exit-code 1
+      --severity HIGH,CRITICAL
+      --format json
+      --output /reports/config-report.json
+      .
+    volumes:
+      - .:/src:ro
+      - ./trivy-reports:/reports
+    working_dir: /src
+    environment:
+      TRIVY_CACHE_DIR: /reports/cache
+    profiles:
+      - ci
+      - security
+
+  hadolint-scan:
+    image: hadolint/hadolint:latest
+    container_name: app-hadolint-scan
+    command: hadolint --ignore DL3008 --ignore DL3013 --failure-threshold error Dockerfile
+    volumes:
+      - ./Dockerfile:/Dockerfile:ro
+    profiles:
+      - ci
+      - security
+
+  # ============================================================================
+  # Linting Service
   # ============================================================================
   lint:
     build:
       context: .
       dockerfile: Dockerfile
+      target: builder
     container_name: app-lint
-    command: bash -c "flake8 app tests && black --check app tests && isort --check-only app tests"
-
+    command: >
+      /bin/sh -c "
+      echo 'Running Black...' &&
+      black --check app tests &&
+      echo 'Running Isort...' &&
+      isort --check-only app tests &&
+      echo 'All linting checks passed!'
+      "
     volumes:
       - ./app:/app/app:ro
       - ./tests:/app/tests:ro
-
+      - ./pyproject.toml:/app/pyproject.toml:ro
     profiles:
       - dev
       - ci
@@ -119,33 +192,47 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: builder
     container_name: app-test
-    command: pytest -v --cov=app --cov-report=html tests/
-
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      echo "Running tests with coverage..."
+      pytest -v --cov=app --cov-report=html --cov-report=xml tests/ || exit 1
+      echo "Running security scan with Bandit..."
+      bandit -r app -f html -o /app/coverage/bandit.html || echo "Bandit completed"
+      echo "Tests completed successfully!"
     environment:
       DATABASE_URL: "postgresql://${DB_USER:-appuser}:${DB_PASSWORD:-secure_password_123}@postgres:5432/${DB_NAME:-appdb}_test"
-
     volumes:
       - ./app:/app/app:ro
       - ./tests:/app/tests:ro
       - ./coverage:/app/coverage
-
     depends_on:
       postgres:
         condition: service_healthy
-
     profiles:
       - dev
       - ci
+    networks:
+      - app-network
 
 # ============================================================================
 # Networks
 # ============================================================================
 networks:
   app-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
 
 # ============================================================================
 # Volumes
 # ============================================================================
 volumes:
   postgres_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local

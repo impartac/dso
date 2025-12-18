@@ -15,3 +15,24 @@ build/
 # OS
 .DS_Store
 *.log
+
+
+# EVIDENCE auto-generated files
+EVIDENCE/P09/sbom-*.json
+EVIDENCE/P09/sca_report.json
+EVIDENCE/P09/sca_summary.md
+
+# Локальные отчеты
+*.scan.json
+*.scan.md
+grype.db*
+
+# Исключения (не игнорируем README и структуру)
+!EVIDENCE/P09/README.md
+!EVIDENCE/P09/.gitkeep
+!EVIDENCE/README.md
+
+.secrets
+trivy-reports/
+proofs/
+.htmlcov

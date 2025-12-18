@@ -46,13 +46,19 @@ jobs:
             IMAGE_NAME="docker.io/${{ github.repository }}:${{ github.sha }}"
             echo "🔍 Сканируем образ: $IMAGE_NAME"
 
-            # Создаем директорию для результатов, если её нет
+            # Создаем директорию для результатов
             mkdir -p EVIDENCE/P09
 
-            # Генерируем SBOM в несколько форматов
+            # 1. Входим в Docker Hub (если репозиторий приватный)
+            #    Раскомментируйте и заполните secrets, если это необходимо.
+            # echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login docker.io -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
+
+            # 2. Генерируем SBOM, передавая контейнеру Syft учетные данные Docker
             docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "$(pwd)/EVIDENCE/P09:/output" \
+            -v "$HOME/.docker:/config:ro" \ # Монтируем конфиг Docker для аутентификации[citation:5]
+            -e DOCKER_CONFIG=/config \       # Указываем путь к конфигу внутри контейнера[citation:5]
             anchore/syft:latest \
             "$IMAGE_NAME" \
             --scope all-layers \

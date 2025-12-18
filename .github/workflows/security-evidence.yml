@@ -84,17 +84,6 @@ jobs:
             add-cpes-if-none: false
             by-cve: false
 
-      - name: Generate SCA Summary
-        run: |
-          python3 scripts/generate-sca-summary.py \
-            "EVIDENCE/P09/sca_report-${{ github.sha }}.json" \
-            "EVIDENCE/P09/sca_summary-${{ github.sha }}.md"
-
-          cp "EVIDENCE/P09/sca_summary-${{ github.sha }}.md" "EVIDENCE/P09/sca-summary-latest.md"
-          ln -sf "sca-summary-latest.md" "EVIDENCE/P09/sca_summary.md"
-          ln -sf "sca_report-${{ github.sha }}.json" "EVIDENCE/P09/sca_report.json"
-          ln -sf "sca_report-${{ github.sha }}.json" "EVIDENCE/P09/sca-latest.json"
-
       - name: Create Evidence Manifest
         run: |
           cat > EVIDENCE/P09/evidence-manifest.json << EOF

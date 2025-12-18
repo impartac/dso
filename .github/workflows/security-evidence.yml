@@ -41,13 +41,31 @@ jobs:
 
       - name: Generate SBOM with Syft (via Docker)
         run: |
-          docker run --rm \
-            -v /var/run/docker.sock:/var/run/docker.sock \
-            anchore/syft:latest \
-            --scope all-layers \
-            "docker.io/${{ github.repository }}:${{ github.sha }}" \
-            -o spdx-json
+            # Формируем имя образа для сканирования
+            IMAGE_NAME="docker.io/${{ github.repository }}:${{ github.sha }}"
+            echo "🔍 Сканируем образ: $IMAGE_NAME"
 
+            # Создаем директорию для результатов, если её нет
+            mkdir -p EVIDENCE/P09
+
+            # Генерируем SBOM в несколько форматов
+            docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$(pwd)/EVIDENCE/P09:/output" \
+            anchore/syft:latest \
+            "$IMAGE_NAME" \
+            --scope all-layers \
+            -o spdx-json=/output/sbom-${{ github.sha }}.json \
+            -o cyclonedx-json=/output/cyclonedx-${{ github.sha }}.json
+
+            # Проверяем результат
+            if [ -f "EVIDENCE/P09/sbom-${{ github.sha }}.json" ]; then
+            echo "✅ SBOM успешно создан: EVIDENCE/P09/sbom-${{ github.sha }}.json"
+            echo "📊 Размер файла: $(wc -l < EVIDENCE/P09/sbom-${{ github.sha }}.json) строк"
+            else
+            echo "❌ Ошибка: SBOM файл не создан"
+            exit 1
+            fi
       - name: Create SBOM symlinks
         run: |
           cp "EVIDENCE/P09/sbom-${{ github.sha }}.json" "EVIDENCE/P09/sbom-latest.json"

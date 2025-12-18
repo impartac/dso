@@ -75,7 +75,14 @@ jobs:
         uses: anchore/scan-action@v3
         id: sca
         with:
-            path: "EVIDENCE/P09/sbom-${{ github.sha }}.json"
+            # Ключевое изменение: указываем, что это SBOM, и используем правильный префикс
+            sbom: "EVIDENCE/P09/sbom-${{ github.sha }}.json"
+            fail-build: true
+            output-format: sarif
+            severity-cutoff: medium
+            only-fixed: false
+            add-cpes-if-none: false
+            by-cve: false
 
       - name: Generate SCA Summary
         run: |

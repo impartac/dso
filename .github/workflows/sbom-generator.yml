@@ -50,7 +50,7 @@ jobs:
           fi
 
       - name: Generate SBOM with Syft
-        uses: anchore/sbom-action@v0.15.1
+        uses: anchore/sbom-action@v0
         id: syft
         with:
           image: ${{ steps.check-image.outputs.image_available == 'true' && format('ghcr.io/{0}:{1}', github.repository, github.event.inputs.image_tag || github.ref_name) || 'docker.io/library/alpine:latest' }}

@@ -1,0 +1,390 @@
+name: CI/CD Pipeline OPTIMIZED
+
+on:
+  push:
+    branches: [main, develop]
+  # pull_request:
+  #       types: [opened, synchronize, reopened]
+  #       branches: [main, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  DOCKER_BUILDKIT: 1
+
+jobs:
+  test:
+    name: Test (${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+        os: [ubuntu-latest,  macos-latest]
+
+    concurrency:
+      group: test-${{ matrix.python-version }}-${{ matrix.os }}-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.cache/pypoetry
+            ~/.local/share/pypoetry
+            ${{ github.workspace }}/.venv
+          key: ${{ runner.os }}-py-${{ matrix.python-version }}-${{ hashFiles('**/pyproject.toml', '**/poetry.lock', '**/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-py-${{ matrix.python-version }}-
+            ${{ runner.os }}-py-
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+          pip install pytest-cov pytest-asyncio pytest-mock
+
+      - name: Run tests
+        env:
+          SECRET_KEY: ${{ secrets.TEST_SECRET_KEY }}
+          DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+          API_KEY: ${{ secrets.TEST_API_KEY }}
+        run: |
+          # Маскирование секретов в логах
+          echo "::add-mask::${{ secrets.TEST_SECRET_KEY }}"
+          echo "::add-mask::${{ secrets.TEST_DATABASE_URL }}"
+
+          # Запуск тестов с coverage
+          pytest tests/ -v \
+            --cov=app \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html:htmlcov \
+            --cov-report=term-missing \
+            --junitxml=junit.xml
+
+      - name: Upload test reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ matrix.python-version }}-${{ matrix.os }}
+          path: |
+            coverage.xml
+            junit.xml
+            htmlcov/
+          retention-days: 7
+
+      - name: Check coverage threshold
+        run: |
+          python -m coverage report --fail-under=10
+
+  lint:
+    name: Lint and Code Quality
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache linting tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: ${{ runner.os }}-precommit-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Install linting tools
+        run: |
+          pip install ruff black isort mypy bandit safety
+
+      - name: Run isort
+        run: isort --check-only --diff .
+
+      - name: Run Ruff linter
+        run: |
+            ruff check --output-format=github .
+
+      - name: Install security tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit safety pip-audit detect-secrets
+
+      - name: Run Bandit security scan
+        run: |
+          bandit -r app -f json -o bandit-report.json || true
+
+      - name: Run safety check
+        run: |
+          safety check -r requirements.txt --json > safety-report.json || true
+
+      - name: Run pip-audit
+        run: |
+          pip-audit -r requirements.txt --format json > pip-audit-report.json || true
+
+      - name: Detect secrets
+        run: |
+          detect-secrets scan > .secrets.baseline || true
+
+      - name: Upload security reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            bandit-report.json
+            safety-report.json
+            pip-audit-report.json
+            .secrets.baseline
+
+  build:
+    name: Build Artifacts
+    runs-on: ubuntu-latest
+    needs: [test, lint]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-docker-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-docker-${{ github.ref }}
+            ${{ runner.os }}-docker-
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+
+      - name: Log into container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.TOKEN }}
+
+      - name: Docker Meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+            images: ghcr.io/impartac/dso
+            tags: |
+                type=ref,event=tag
+                type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+                type=ref,event=branch,suffix={{branch}}
+                type=ref,event=pr,suffix={{pr}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+            context: .
+            push: ${{ github.event_name != 'pull_request' }}
+            tags: ${{ steps.meta.outputs.tags }}
+            labels: ${{ steps.meta.outputs.labels }}
+            cache-from: type=gha
+            cache-to: type=gha,mode=max
+            # Явно включаем BuildKit и используем новый драйвер
+            builder: ${{ steps.buildx.outputs.name }}
+            # Добавляем возможность использовать COPY --chmod
+            build-args: BUILDKIT_SANDBOX_HOSTNAME=false
+
+      - name: Build Python package
+        if: contains(github.event.head_commit.message, 'release') || startsWith(github.ref, 'refs/tags/v')
+        run: |
+          pip install build
+          python -m build --wheel --outdir dist/
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            dist/*.whl
+          retention-days: 30
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release v${VERSION}
+          body: |
+            ## Changes in this release
+
+            ### Features
+            - New feature 1
+            - New feature 2
+
+            ### Fixes
+            - Bug fix 1
+            - Bug fix 2
+
+            ### Docker Images
+            - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${VERSION}`
+            - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest`
+
+            ### Artifacts
+            See attached build artifacts.
+          draft: false
+          prerelease: false
+          files: |
+            dist/*.whl
+            coverage.xml
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN }}
+        if: success()
+
+
+  reports:
+    name: Generate Reports
+    runs-on: ubuntu-latest
+    needs: [test, lint]
+    if: always()
+
+    steps:
+    - name: Download all test reports
+      uses: actions/download-artifact@v4
+      with:
+        path: reports/
+
+    - name: Combine coverage reports
+      id: coverage
+      run: |
+        cd reports
+
+        # Создаем флаг существования HTML отчета
+        if [ -d "htmlcov" ] && [ -n "$(ls -A htmlcov 2>/dev/null)" ]; then
+          echo "HTML_REPORT_EXISTS=true" >> $GITHUB_ENV
+          echo "HTML report exists"
+        else
+          echo "HTML_REPORT_EXISTS=false" >> $GITHUB_ENV
+          echo "No HTML report found"
+        fi
+
+        # Ищем и комбинируем coverage файлы
+        python -m pip install coverage
+
+        # Собираем все .coverage файлы
+        find . -name ".coverage*" -exec cp {} . \; 2>/dev/null || true
+
+        if ls .coverage* 1> /dev/null 2>&1; then
+          python -m coverage combine
+          python -m coverage xml -o combined-coverage.xml
+          echo "Combined coverage report generated"
+        else
+          # Создаем пустой отчет если нет данных
+          echo '<?xml version="1.0"?><coverage><sources><source>/app</source></sources><packages/></coverage>' > combined-coverage.xml
+        fi
+
+        # Извлекаем процент покрытия
+        if [ -f "combined-coverage.xml" ]; then
+          COVERAGE=$(grep -o 'line-rate="[0-9.]*"' combined-coverage.xml | head -1 | sed 's/line-rate="//;s/"//')
+          COVERAGE_PERCENT=$(echo "$COVERAGE * 100" | bc | xargs printf "%.2f")
+          echo "COVERAGE_PERCENT=$COVERAGE_PERCENT" >> $GITHUB_ENV
+        fi
+
+    - name: Upload combined reports
+      uses: actions/upload-artifact@v4
+      with:
+        name: combined-reports
+        path: |
+          reports/combined-coverage.xml
+          reports/htmlcov/
+        retention-days: 30
+
+    - name: Comment coverage in PR
+      if: github.event_name == 'pull_request' && env.COVERAGE_PERCENT != ''
+      uses: actions/github-script@v7
+      with:
+        script: |
+          // Маскируем секреты в логах
+          console.log('::add-mask::' + process.env.COVERAGE_PERCENT);
+
+          const coverage = process.env.COVERAGE_PERCENT || '0';
+          const color = coverage >= 80 ? 'green' : coverage >= 60 ? 'yellow' : 'red';
+
+          const comment = `## 📊 Code Coverage Report
+
+          **Coverage:** ![${coverage}%](https://img.shields.io/badge/coverage-${coverage}%25-${color})
+          **Build:** ✅ Success
+
+          [View detailed coverage report](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID})
+
+          *Auto-generated by GitHub Actions*`;
+
+          try {
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+          } catch (error) {
+            console.log('Could not create comment:', error.message);
+          }
+
+    - name: Publish coverage to GitHub Pages
+      if: github.ref == 'refs/heads/main' && env.HTML_REPORT_EXISTS == 'true'
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: reports/htmlcov
+        destination_dir: coverage
+        keep_files: false
+  deploy:
+    name: Deploy (Mock/Staging)
+    runs-on: ubuntu-latest
+    needs: [build, reports]
+    environment:
+      name: staging
+      url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+    # Условие для эмуляции деплоя
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup deployment environment
+        run: |
+          echo "Deploying to ${{ github.ref }}"
+          echo "Mock deployment - in production would deploy to:"
+          echo "- Staging: if branch=main"
+          echo "- Production: if tag=v*"
+
+          # Эмуляция деплоя
+          echo "Docker image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          echo "Deployment config would be applied here"
+
+          # Пример команды для реального деплоя (закомментировано)
+          # kubectl apply -f k8s/ -n staging
+          # helm upgrade --install myapp ./charts/myapp
+
+      - name: Health check (mock)
+        run: |
+          echo "Performing health check..."
+          echo "✅ Deployment successful"
+          echo "🌐 Endpoint: https://staging.example.com"

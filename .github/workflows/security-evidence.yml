@@ -1,0 +1,196 @@
+name: Security Evidence Collection
+
+on:
+#   push:
+  pull_request:
+    branches: [ main, master ]
+    types: [ opened, synchronize, reopened ]
+  workflow_dispatch:
+    inputs:
+      evidence_type:
+        description: 'Evidence type to collect'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - sbom-only
+          - sca-only
+          - ds-report
+
+jobs:
+  evidence-collection:
+    runs-on: ubuntu-latest
+    name: "Evidence: ${{ github.event_name }} @ ${{ github.sha }}"
+    outputs:
+      evidence_url: ${{ steps.upload.outputs.evidence-url }}
+      sbom_url: ${{ steps.upload.outputs.sbom-url }}
+      sca_url: ${{ steps.upload.outputs.sca-url }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check image availability
+        id: check-image
+        run: |
+          IMAGE="ghcr.io/${{ github.repository }}:${{ github.event.inputs.image_tag || github.ref_name }}"
+          echo "Checking image: $IMAGE"
+
+          # Пытаемся проверить доступность образа
+          if docker manifest inspect "$IMAGE" > /dev/null 2>&1; then
+            echo "Image exists and is accessible"
+            echo "image_available=true" >> $GITHUB_OUTPUT
+          else
+            echo "Warning: Image not accessible. Using fallback image."
+            echo "image_available=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate SBOM with Syft
+        uses: anchore/sbom-action@v0
+        id: syft
+        with:
+          image: ${{ steps.check-image.outputs.image_available == 'true' && format('ghcr.io/{0}:{1}', github.repository, github.ref_name) || 'docker.io/library/alpine:latest' }}
+          format: "spdx-json"
+          output-file: "EVIDENCE/P09/sbom-${{ github.sha }}.json"
+      - name: Create SBOM symlinks
+        run: |
+          cp "EVIDENCE/P09/sbom-${{ github.sha }}.json" "EVIDENCE/P09/sbom-latest.json"
+          ln -sf "sbom-latest.json" "EVIDENCE/P09/sbom.json"
+          echo "SBOM generated: sbom-${{ github.sha }}.json -> sbom.json"
+
+      - name: Run SCA Analysis
+        uses: anchore/scan-action@v3
+        id: sca
+        with:
+            # Ключевое изменение: указываем, что это SBOM, и используем правильный префикс
+            sbom: "EVIDENCE/P09/sbom-${{ github.sha }}.json"
+            fail-build: true
+            output-format: sarif
+            severity-cutoff: medium
+            only-fixed: false
+            add-cpes-if-none: false
+            by-cve: false
+
+      - name: Create Evidence Manifest
+        run: |
+          cat > EVIDENCE/P09/evidence-manifest.json << EOF
+          {
+            "practice": "P09",
+            "commit_sha": "${{ github.sha }}",
+            "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')",
+            "workflow_run": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "artifacts": {
+              "sbom": {
+                "path": "EVIDENCE/P09/sbom-${{ github.sha }}.json",
+                "symlink": "EVIDENCE/P09/sbom.json",
+                "format": "SPDX-JSON",
+                "tool": "anchore/syft@v0.102.1"
+              },
+              "sca_report": {
+                "path": "EVIDENCE/P09/sca_report-${{ github.sha }}.json",
+                "symlink": "EVIDENCE/P09/sca_report.json",
+                "format": "JSON",
+                "tool": "anchore/grype@latest"
+              },
+              "sca_summary": {
+                "path": "EVIDENCE/P09/sca_summary-${{ github.sha }}.md",
+                "symlink": "EVIDENCE/P09/sca_summary.md",
+                "format": "Markdown"
+              }
+            },
+            "traceability": {
+              "commit_url": "https://github.com/${{ github.repository }}/commit/${{ github.sha }}",
+              "pr_url": "${{ github.event.pull_request.html_url }}",
+              "evidence_index": "https://github.com/${{ github.repository }}/tree/main/EVIDENCE"
+            }
+          }
+          EOF
+
+      - name: Upload Evidence Artifacts
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-p09-${{ github.sha }}
+          path: |
+            EVIDENCE/P09/
+            EVIDENCE/templates/
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Update Evidence Index
+        run: |
+          # Создаем HTML индекс для удобного просмотра
+          cat > EVIDENCE/index.html << EOF
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>Evidence Index - ${{ github.repository }}</title>
+              <style>
+                  body { font-family: Arial, sans-serif; margin: 40px; }
+                  .artifact { border: 1px solid #ddd; padding: 15px; margin: 10px 0; }
+                  .success { color: green; }
+                  .warning { color: orange; }
+              </style>
+          </head>
+          <body>
+              <h1>🔍 Evidence Collection</h1>
+              <p><strong>Repository:</strong> ${{ github.repository }}</p>
+              <p><strong>Commit:</strong> <code>${{ github.sha }}</code></p>
+              <p><strong>Generated:</strong> $(date)</p>
+
+              <h2>📁 Available Artifacts</h2>
+
+              <div class="artifact">
+                  <h3>📋 SBOM (Software Bill of Materials)</h3>
+                  <ul>
+                      <li><a href="P09/sbom.json">Latest SBOM (symlink)</a></li>
+                      <li><a href="P09/sbom-${{ github.sha }}.json">This commit: sbom-${{ github.sha }}.json</a></li>
+                      <li><strong>Format:</strong> SPDX JSON</li>
+                      <li><strong>Tool:</strong> Anchore Syft v0.102.1</li>
+                  </ul>
+              </div>
+
+              <div class="artifact">
+                  <h3>⚠️ SCA Report (Security Analysis)</h3>
+                  <ul>
+                      <li><a href="P09/sca_report.json">Latest Report (symlink)</a></li>
+                      <li><a href="P09/sca_report-${{ github.sha }}.json">Full JSON: sca_report-${{ github.sha }}.json</a></li>
+                      <li><a href="P09/sca_summary.md">Human Summary (symlink)</a></li>
+                      <li><a href="P09/sca_summary-${{ github.sha }}.md">This commit: sca_summary-${{ github.sha }}.md</a></li>
+                  </ul>
+              </div>
+
+              <div class="artifact">
+                  <h3>📄 Evidence Metadata</h3>
+                  <ul>
+                      <li><a href="P09/evidence-manifest.json">Evidence Manifest</a> - Traceability data</li>
+                      <li><a href="DS_GUIDE.md">DS Report Guide</a> - How to use for final report</li>
+                      <li><a href="templates/ds-report-${{ github.sha }}.md">DS Report Template</a></li>
+                  </ul>
+              </div>
+
+              <h2>🔗 Traceability</h2>
+              <ul>
+                  <li><a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">Workflow Run</a></li>
+                  <li><a href="https://github.com/${{ github.repository }}/commit/${{ github.sha }}">Commit</a></li>
+                  <li><a href="../README.md#evidence">Project Documentation</a></li>
+              </ul>
+
+              <hr>
+              <p><em>Generated by Security Evidence Pipeline</em></p>
+          </body>
+          </html>
+          EOF

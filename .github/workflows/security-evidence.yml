@@ -28,11 +28,14 @@ jobs:
       sca_url: ${{ steps.upload.outputs.sca-url }}
 
     steps:
-      - name: Checkout with full history
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
+      - name: Log in to Docker Hub
+        run: |
+            echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login docker.io --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
+            - name: Checkout with full history
+                uses: actions/checkout@v4
+                with:
+                fetch-depth: 0
+                persist-credentials: false
 
       - name: Setup evidence directory
         run: |

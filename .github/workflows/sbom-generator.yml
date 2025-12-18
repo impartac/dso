@@ -53,7 +53,7 @@ jobs:
         uses: anchore/sbom-action@v0
         id: syft
         with:
-          image: ${{ steps.check-image.outputs.image_available == 'true' && format('ghcr.io/{0}:{1}', github.repository, github.event.inputs.image_tag || github.ref_name) || 'docker.io/library/alpine:latest' }}
+          image: ${{ steps.check-image.outputs.image_available == 'true' && format('ghcr.io/{0}:{1}', github.repository, github.ref_name) || 'docker.io/library/alpine:latest' }}
           format: "spdx-json"
           output-file: "EVIDENCE/P09/sbom-${{ github.sha }}.json"
 

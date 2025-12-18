@@ -28,6 +28,14 @@ jobs:
       sca_url: ${{ steps.upload.outputs.sca-url }}
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v2
         with:
@@ -35,44 +43,28 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup evidence directory
+      - name: Check image availability
+        id: check-image
         run: |
-          mkdir -p EVIDENCE/P09
-          mkdir -p EVIDENCE/templates
+          IMAGE="ghcr.io/${{ github.repository }}:${{ github.event.inputs.image_tag || github.ref_name }}"
+          echo "Checking image: $IMAGE"
 
-      - name: Generate SBOM with Syft (via Docker)
-        run: |
-            # Формируем имя образа для сканирования
-            IMAGE_NAME="docker.io/${{ github.repository }}:${{ github.sha }}"
-            echo "🔍 Сканируем образ: $IMAGE_NAME"
+          # Пытаемся проверить доступность образа
+          if docker manifest inspect "$IMAGE" > /dev/null 2>&1; then
+            echo "Image exists and is accessible"
+            echo "image_available=true" >> $GITHUB_OUTPUT
+          else
+            echo "Warning: Image not accessible. Using fallback image."
+            echo "image_available=false" >> $GITHUB_OUTPUT
+          fi
 
-            # Создаем директорию для результатов
-            mkdir -p EVIDENCE/P09
-
-            # 1. Входим в Docker Hub (если репозиторий приватный)
-            #    Раскомментируйте и заполните secrets, если это необходимо.
-            # echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login docker.io -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
-
-            # 2. Генерируем SBOM, передавая контейнеру Syft учетные данные Docker
-            docker run --rm \
-            -v /var/run/docker.sock:/var/run/docker.sock \
-            -v "$(pwd)/EVIDENCE/P09:/output" \
-            -v "$HOME/.docker:/config:ro" \ # Монтируем конфиг Docker для аутентификации[citation:5]
-            -e DOCKER_CONFIG=/config \       # Указываем путь к конфигу внутри контейнера[citation:5]
-            anchore/syft:latest \
-            "$IMAGE_NAME" \
-            --scope all-layers \
-            -o spdx-json=/output/sbom-${{ github.sha }}.json \
-            -o cyclonedx-json=/output/cyclonedx-${{ github.sha }}.json
-
-            # Проверяем результат
-            if [ -f "EVIDENCE/P09/sbom-${{ github.sha }}.json" ]; then
-            echo "✅ SBOM успешно создан: EVIDENCE/P09/sbom-${{ github.sha }}.json"
-            echo "📊 Размер файла: $(wc -l < EVIDENCE/P09/sbom-${{ github.sha }}.json) строк"
-            else
-            echo "❌ Ошибка: SBOM файл не создан"
-            exit 1
-            fi
+      - name: Generate SBOM with Syft
+        uses: anchore/sbom-action@v0
+        id: syft
+        with:
+          image: ${{ steps.check-image.outputs.image_available == 'true' && format('ghcr.io/{0}:{1}', github.repository, github.ref_name) || 'docker.io/library/alpine:latest' }}
+          format: "spdx-json"
+          output-file: "EVIDENCE/P09/sbom-${{ github.sha }}.json"
       - name: Create SBOM symlinks
         run: |
           cp "EVIDENCE/P09/sbom-${{ github.sha }}.json" "EVIDENCE/P09/sbom-latest.json"

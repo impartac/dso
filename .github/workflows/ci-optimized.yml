@@ -2,9 +2,10 @@ name: CI/CD Pipeline OPTIMIZED
 
 on:
   push:
-  pull_request:
-        types: [opened, synchronize, reopened]
-        branches: [main, develop]
+    branches: [main, develop]
+  # pull_request:
+  #       types: [opened, synchronize, reopened]
+  #       branches: [main, develop]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
